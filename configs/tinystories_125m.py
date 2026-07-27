@@ -1,0 +1,30 @@
+# GPT-2-small-sized architecture (~124M parameters).
+model = dict(
+    vocab_size=50257,
+    block_size=512,
+    n_layer=12,
+    n_head=12,
+    d_model=768,
+    d_ff=3072,
+    dropout=0.1,
+)
+
+train = dict(
+    data_dir="data/tinystories_gpt2",
+    tokenizer="gpt2",
+    out_dir="checkpoints/tinystories_125m",
+    batch_size=12,
+    gradient_accumulation_steps=8,
+    max_steps=50000,
+    eval_interval=500,
+    eval_batches=50,
+    log_interval=10,
+    learning_rate=6e-4,
+    min_lr=6e-5,
+    warmup_steps=1000,
+    weight_decay=0.1,
+    grad_clip=1.0,
+    dtype="bfloat16",
+    compile=True,
+    seed=1337,
+)

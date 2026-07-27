@@ -1,0 +1,30 @@
+# About 20M parameters with GPT-2's 50,257-token vocabulary.
+model = dict(
+    vocab_size=50257,
+    block_size=256,
+    n_layer=8,
+    n_head=8,
+    d_model=256,
+    d_ff=1024,
+    dropout=0.1,
+)
+
+train = dict(
+    data_dir="data/tinystories_gpt2",
+    tokenizer="gpt2",
+    out_dir="checkpoints/tinystories_20m",
+    batch_size=32,
+    gradient_accumulation_steps=8,
+    max_steps=20000,
+    eval_interval=250,
+    eval_batches=50,
+    log_interval=10,
+    learning_rate=6e-4,
+    min_lr=6e-5,
+    warmup_steps=500,
+    weight_decay=0.1,
+    grad_clip=1.0,
+    dtype="bfloat16",
+    compile=True,
+    seed=1337,
+)
