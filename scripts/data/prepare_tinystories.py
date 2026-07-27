@@ -10,6 +10,9 @@ from datasets import load_dataset
 import tiktoken
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
 def encode_split(dataset, output_path: Path, encoding, limit: int | None) -> int:
     eos = encoding.eot_token
     count = 0
@@ -35,6 +38,8 @@ def main() -> None:
     args = parser.parse_args()
 
     out_dir = Path(args.out_dir)
+    if not out_dir.is_absolute():
+        out_dir = PROJECT_ROOT / out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
     encoding = tiktoken.get_encoding("gpt2")
     dataset = load_dataset("roneneldan/TinyStories")

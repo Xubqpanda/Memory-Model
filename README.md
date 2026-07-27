@@ -21,13 +21,15 @@
 ## 目录
 
 ```text
-configs/       模型和训练超参数
-src/           Transformer 核心实现
-scripts/       数据准备、训练和生成入口
-tests/         因果掩码、反向传播、KV Cache 等测试
-notes/         原理笔记
-data/          tokenized 数据，不提交到 Git
-checkpoints/   模型检查点，不提交到 Git
+configs/               模型和训练超参数
+src/                   Transformer 核心实现
+scripts/data/          数据下载与预处理入口
+scripts/train/         训练入口
+scripts/inference/     推理与生成入口
+tests/                 因果掩码、反向传播、KV Cache 等测试
+notes/                 原理笔记
+data/                  tokenized 数据，不提交到 Git
+checkpoints/           模型检查点，不提交到 Git
 ```
 
 ## 1. 安装
@@ -46,7 +48,7 @@ python -m pip install -e '.[data,dev]'
 先生成无需联网的 byte-level toy 数据：
 
 ```bash
-python scripts/prepare_toy.py
+python scripts/data/prepare_toy.py
 ```
 
 执行测试：
@@ -58,13 +60,13 @@ pytest -q
 在 CPU 或 GPU 上跑几步：
 
 ```bash
-python scripts/train.py --config configs/tiny_debug.py --max-steps 20
+python scripts/train/pretrain.py --config configs/tiny_debug.py --max-steps 20
 ```
 
 用 checkpoint 生成文本：
 
 ```bash
-python scripts/sample.py \
+python scripts/inference/generate.py \
   --checkpoint checkpoints/tiny_debug/latest.pt \
   --prompt 'Once upon a time' \
   --max-new-tokens 100
@@ -75,21 +77,21 @@ python scripts/sample.py \
 先用少量故事验证下载和预处理流程：
 
 ```bash
-python scripts/prepare_tinystories.py --limit-train 10000 --limit-val 1000
-python scripts/train.py --config configs/tinystories_20m.py --max-steps 100
+python scripts/data/prepare_tinystories.py --limit-train 10000 --limit-val 1000
+python scripts/train/pretrain.py --config configs/tinystories_20m.py --max-steps 100
 ```
 
 确认无误后，删除 `data/tinystories_gpt2` 并处理完整数据：
 
 ```bash
-python scripts/prepare_tinystories.py
-python scripts/train.py --config configs/tinystories_20m.py
+python scripts/data/prepare_tinystories.py
+python scripts/train/pretrain.py --config configs/tinystories_20m.py
 ```
 
 125M 配置：
 
 ```bash
-python scripts/train.py --config configs/tinystories_125m.py
+python scripts/train/pretrain.py --config configs/tinystories_125m.py
 ```
 
 第一阶段建议先让 debug 模型明显降低 loss，再训练 20M。125M 配置用于第二阶段；它会消耗更多训练时间，不应在代码尚未验证时直接长跑。
@@ -100,7 +102,7 @@ python scripts/train.py --config configs/tinystories_125m.py
 2. `CausalSelfAttention`
 3. `TransformerLM.forward`
 4. `TransformerLM.generate`
-5. `scripts/train.py`
+5. `scripts/train/pretrain.py`
 
 公式版结构说明见 [`notes/architecture.md`](notes/architecture.md)。
 

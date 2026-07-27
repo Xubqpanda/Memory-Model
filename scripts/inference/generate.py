@@ -5,7 +5,7 @@ from pathlib import Path
 
 import torch
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from tiny_transformer import ModelConfig, TransformerLM
@@ -26,7 +26,10 @@ def main() -> None:
     args = parser.parse_args()
 
     device = torch.device(args.device)
-    checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)
+    checkpoint_path = Path(args.checkpoint)
+    if not checkpoint_path.is_absolute():
+        checkpoint_path = PROJECT_ROOT / checkpoint_path
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     model = TransformerLM(ModelConfig(**checkpoint["model_config"])).to(device)
     model.load_state_dict(checkpoint["model"])
     tokenizer = get_tokenizer(checkpoint["train_config"]["tokenizer"])

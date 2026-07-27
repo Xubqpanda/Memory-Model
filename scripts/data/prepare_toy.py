@@ -6,6 +6,9 @@ from pathlib import Path
 import numpy as np
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
 STORIES = """Once upon a time, a little cat lived near a blue river. The cat liked to watch the birds and play in the warm sun. One day, the cat found a red ball. It rolled the ball home and shared it with a kind dog. They played together and became good friends. The end.
 
 Lily had a small garden. Every morning she gave water to the flowers. A yellow flower grew taller than all the others. Lily smiled and showed it to her mother. The end.
@@ -22,6 +25,8 @@ def main() -> None:
     args = parser.parse_args()
 
     out_dir = Path(args.out_dir)
+    if not out_dir.is_absolute():
+        out_dir = PROJECT_ROOT / out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
     tokens = np.frombuffer((STORIES * args.repeats).encode("utf-8"), dtype=np.uint8).astype(np.uint16)
     split = int(0.9 * len(tokens))

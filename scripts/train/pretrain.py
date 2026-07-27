@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from tiny_transformer import ModelConfig, TransformerLM
