@@ -22,7 +22,7 @@
 
 ```text
 configs/               模型和训练超参数
-src/                   Transformer 核心实现
+src/tiny_transformer/model/  可替换的 Transformer 架构组件
 scripts/data/          数据下载与预处理入口
 scripts/train/         训练入口
 scripts/inference/     推理与生成入口
@@ -98,10 +98,10 @@ python scripts/train/pretrain.py --config configs/tinystories_125m.py
 
 ## 阅读顺序
 
-1. `src/tiny_transformer/model.py` 的 `TransformerBlock`
-2. `CausalSelfAttention`
-3. `TransformerLM.forward`
-4. `TransformerLM.generate`
+1. `src/tiny_transformer/model/block.py` 的 `TransformerBlock`
+2. `src/tiny_transformer/model/attention.py` 的 `CausalSelfAttention`
+3. `src/tiny_transformer/model/transformer.py` 的 `TransformerLM.forward`
+4. `src/tiny_transformer/model/transformer.py` 的 `TransformerLM.generate`
 5. `scripts/train/pretrain.py`
 
 公式版结构说明见 [`notes/architecture.md`](notes/architecture.md)。

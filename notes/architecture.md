@@ -1,17 +1,31 @@
-# `model.py` 架构详解：从 token 到下一个 token
+# `model/` 架构详解：从 token 到下一个 token
 
 本文对应项目中的模型实现：
 
-- [`src/tiny_transformer/model.py`](../src/tiny_transformer/model.py)
+- [`src/tiny_transformer/model/`](../src/tiny_transformer/model/)
 - [`src/tiny_transformer/config.py`](../src/tiny_transformer/config.py)
 
-`model.py` 是当前项目最核心的模型架构文件。它规定了模型内部有哪些层、数据如何流过这些层，以及训练和推理时模型返回什么。
+`model/` 是当前项目最核心的模型架构包。它规定了模型内部有哪些层、数据如何流过这些层，以及训练和推理时模型返回什么。我们将组件拆成独立文件，是为了后续能够单独替换 Attention、FFN、Norm、Residual、Embedding 或输出头并进行消融实验。
+
+```text
+model/
+├── attention.py    多头因果自注意力与 KV Cache
+├── ffn.py          Position-wise FFN
+├── embedding.py    Token 与位置 Embedding
+├── norm.py         归一化组件
+├── residual.py     残差连接策略
+├── block.py        组装一个 Transformer Block
+├── lm_head.py      语言模型输出头
+├── transformer.py  组装完整 Decoder-only Transformer
+├── types.py        KVCache 和 ModelOutput 类型
+└── __init__.py     统一导出公共接口
+```
 
 但它并不负责完整训练流程。几个文件的职责分别是：
 
 | 文件 | 职责 |
 | --- | --- |
-| `src/tiny_transformer/model.py` | 定义模型结构和前向传播 |
+| `src/tiny_transformer/model/` | 定义并组装可替换的模型组件 |
 | `src/tiny_transformer/config.py` | 定义层数、隐藏维度、头数等规模参数 |
 | `scripts/train/pretrain.py` | 读取数据、反向传播、更新参数、保存 checkpoint |
 | `scripts/inference/generate.py` | 加载 checkpoint 并调用模型生成文本 |
@@ -376,6 +390,35 @@ self.out_proj(y)
 
 这个输出投影会重新混合不同 Head 得到的信息。
 
+### 5.6 Attention Head 和 LM Head 不是同一个 Head
+
+项目中会遇到两种完全不同的“头”：
+
+| 名称 | 所属位置 | 数量 | 作用 |
+| --- | --- | --- | --- |
+| Attention Head | `attention.py` 的多头注意力内部 | 每层有 `n_head` 个 | 从不同表示子空间匹配并汇总上下文信息 |
+| Language Model Head / LM Head | `lm_head.py`，模型最末端 | 整个模型通常只有一个 | 把隐藏表征映射成整个词表的 logits |
+
+Attention Head 是 Attention 的一部分。假设 `d_model=128`、`n_head=4`，Attention 会把 Q、K、V 各自拆成 4 个 32 维的头：
+
+```text
+Q, K, V: [B, T, 128]
+              ↓ 拆头
+Q, K, V: [B, 4, T, 32]
+```
+
+我们没有为每个 Attention Head 创建一个独立的 Python 对象，而是把所有头放在同一个张量中并行计算。这种向量化实现更接近实际大模型，也更高效。不同头仍然对应 Q、K、V 投影矩阵中的不同参数切片，因此能够学到不同的信息匹配方式。
+
+LM Head 则出现在所有 Transformer Block 之后：
+
+```text
+[B, T, d_model]
+        ↓ LM Head
+[B, T, vocab_size]
+```
+
+它不进行 token 之间的 Attention，也不存在 Query、Key、Value。这里叫 Head，是因为它是接在主干网络最后、为某个任务产生输出的“任务头”。如果主干用于分类，也可以接 Classification Head；当前任务是语言建模，所以接 Language Model Head。
+
 ## 6. `FeedForward`
 
 FFN 的实现是：
@@ -632,9 +675,9 @@ loss = F.cross_entropy(
 
 这里把 batch 和时间维展平，是为了把所有位置统一交给交叉熵函数计算。
 
-## 11. `model.py` 与反向传播的关系
+## 11. `model/` 与反向传播的关系
 
-`model.py` 中的 `forward` 建立了完整计算图：
+`model/transformer.py` 中的 `forward` 将各组件串联起来并建立完整计算图：
 
 ```text
 Embedding
@@ -651,7 +694,7 @@ loss.backward()
 optimizer.step()
 ```
 
-`loss.backward()` 沿着 `model.py` 建立的计算图反向计算所有参数的梯度，包括：
+`loss.backward()` 沿着这些模型组件建立的计算图反向计算所有参数的梯度，包括：
 
 - Token Embedding；
 - Position Embedding；
@@ -821,13 +864,13 @@ Decoder-only Transformer
 
 ## 17. 推荐阅读代码的顺序
 
-第一次阅读 `model.py` 时，推荐按照下面的顺序，而不是机械地从第一行读到最后一行：
+第一次阅读 `model/` 时，推荐按照下面的顺序，而不是机械地按文件名阅读：
 
-1. `TransformerBlock.forward`：先看一个 Block 的整体骨架；
-2. `CausalSelfAttention.forward`：理解 token 之间如何交换信息；
-3. `FeedForward.forward`：理解单个 token 的非线性加工；
-4. `TransformerLM.__init__`：看完整模型如何堆叠；
-5. `TransformerLM.forward`：串起 Embedding、Blocks、LM Head 和 Loss；
-6. `TransformerLM.generate`：理解自回归生成和 KV Cache。
+1. `block.py` 的 `TransformerBlock.forward`：先看一个 Block 的整体骨架；
+2. `attention.py` 的 `CausalSelfAttention.forward`：理解 token 之间如何交换信息；
+3. `ffn.py` 的 `FeedForward.forward`：理解单个 token 的非线性加工；
+4. `transformer.py` 的 `TransformerLM.__init__`：看完整模型如何堆叠；
+5. `transformer.py` 的 `TransformerLM.forward`：串起 Embedding、Blocks、LM Head 和 Loss；
+6. `transformer.py` 的 `TransformerLM.generate`：理解自回归生成和 KV Cache。
 
 掌握这条主线以后，我们后续加入 memory 时就可以准确讨论：memory 应该进入 Attention 之前、Attention 内部、Block 之间，还是作为独立的状态更新通道。
