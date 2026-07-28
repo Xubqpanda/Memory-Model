@@ -1,6 +1,12 @@
 import json
 
-from tiny_transformer.training import TrainingLogger, create_local_run_dir
+import pytest
+
+from tiny_transformer.training import (
+    TrainingLogger,
+    create_local_run_dir,
+    resolve_gradient_accumulation_steps,
+)
 
 
 def test_training_logger_writes_local_files(tmp_path):
@@ -18,3 +24,15 @@ def test_training_logger_writes_local_files(tmp_path):
     assert metrics["step"] == 0
     assert metrics["loss"] == 1.5
     assert json.loads((run_dir / "config.json").read_text(encoding="utf-8"))["model"]["n_layer"] == 2
+
+
+def test_accumulation_preserves_global_tokens_across_world_sizes():
+    one_gpu = resolve_gradient_accumulation_steps(128, 256, 1, 2, 65536)
+    two_gpu = resolve_gradient_accumulation_steps(128, 256, 2, 2, 65536)
+    assert one_gpu == 2
+    assert two_gpu == 1
+
+
+def test_accumulation_rejects_incompatible_target():
+    with pytest.raises(ValueError):
+        resolve_gradient_accumulation_steps(128, 256, 2, 2, 70000)

@@ -13,8 +13,11 @@ train = dict(
     data_dir="data/tinystories_gpt2",
     tokenizer="gpt2",
     out_dir="checkpoints/tinystories_20m",
-    batch_size=32,
-    gradient_accumulation_steps=8,
+    # Per-GPU batch. With target_tokens_per_step, accumulation resolves to:
+    # 1 GPU -> 2 accumulation steps; 2 GPUs -> 1 accumulation step.
+    batch_size=128,
+    gradient_accumulation_steps=2,
+    target_tokens_per_step=65536,
     # 8,000 × 65,536 ≈ 524M sampled tokens, close to one full TinyStories pass.
     max_steps=8000,
     eval_interval=250,

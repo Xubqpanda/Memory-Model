@@ -131,18 +131,28 @@ data/tinystories_gpt2/
 └── meta.json
 ```
 
-正式训练 20M baseline。W&B 直连可用，而本地 Git/Hugging Face 代理可能干扰 W&B，因此训练前显式取消代理：
+正式训练 20M baseline。推荐使用两张 A100 通过 DDP 训练。W&B 直连可用，而本地 Git/Hugging Face 代理可能干扰 W&B，因此训练前显式取消代理：
 
 ```bash
 unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
 
-CUDA_VISIBLE_DEVICES=0 \
+CUDA_VISIBLE_DEVICES=0,1 \
 /mnt/8t/xubuqiang/anaconda3/bin/python \
+  -m torch.distributed.run \
+  --standalone \
+  --nproc_per_node=2 \
   scripts/train/pretrain.py \
   --config configs/tinystories_20m.py
 ```
 
-当前配置训练 8,000 steps，每步 65,536 token，总计约 5.24 亿采样 token。终端 tqdm 会显示 loss、val loss、学习率、梯度、吞吐量和 ETA。
+当前配置每张 GPU 使用 batch 128。训练器会自动保持全局 batch 不变：
+
+```text
+单卡：128 × 256 × accumulation 2 = 65,536 token/step
+双卡：2 × 128 × 256 × accumulation 1 = 65,536 token/step
+```
+
+因此可以从单卡 checkpoint 无缝切换到双卡 DDP，不需要改变学习率或训练步数。配置训练 8,000 steps，总计约 5.24 亿采样 token。终端 tqdm 会显示 loss、val loss、学习率、梯度、吞吐量和 ETA。
 
 本地日志保存在：
 
@@ -164,8 +174,11 @@ checkpoints/tinystories_20m/
 中断后继续训练：
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 \
+CUDA_VISIBLE_DEVICES=0,1 \
 /mnt/8t/xubuqiang/anaconda3/bin/python \
+  -m torch.distributed.run \
+  --standalone \
+  --nproc_per_node=2 \
   scripts/train/pretrain.py \
   --config configs/tinystories_20m.py \
   --resume checkpoints/tinystories_20m/latest.pt
