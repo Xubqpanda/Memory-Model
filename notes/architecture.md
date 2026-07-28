@@ -1,14 +1,14 @@
-# `model/` 架构详解：从 token 到下一个 token
+# `vanilla_transformer/` 架构详解：从 token 到下一个 token
 
 本文对应项目中的模型实现：
 
-- [`src/tiny_transformer/model/`](../src/tiny_transformer/model/)
-- [`src/tiny_transformer/config.py`](../src/tiny_transformer/config.py)
+- [`src/memory_model/models/vanilla_transformer/`](../src/memory_model/models/vanilla_transformer/)
+- [`src/memory_model/config.py`](../src/memory_model/config.py)
 
-`model/` 是当前项目最核心的模型架构包。它规定了模型内部有哪些层、数据如何流过这些层，以及训练和推理时模型返回什么。我们将组件拆成独立文件，是为了后续能够单独替换 Attention、FFN、Norm、Residual、Embedding 或输出头并进行消融实验。
+`vanilla_transformer/` 是当前项目的标准 Transformer 基线架构包。它规定了模型内部有哪些层、数据如何流过这些层，以及训练和推理时模型返回什么。我们将组件拆成独立文件，是为了后续能够单独替换 Attention、FFN、Norm、Residual、Embedding 或输出头并进行消融实验，也为未来的 `memory_transformer/` 保留清楚的对照边界。
 
 ```text
-model/
+vanilla_transformer/
 ├── attention.py    多头因果自注意力与 KV Cache
 ├── ffn.py          Position-wise FFN
 ├── embedding.py    Token 与位置 Embedding
@@ -25,8 +25,8 @@ model/
 
 | 文件 | 职责 |
 | --- | --- |
-| `src/tiny_transformer/model/` | 定义并组装可替换的模型组件 |
-| `src/tiny_transformer/config.py` | 定义层数、隐藏维度、头数等规模参数 |
+| `src/memory_model/models/vanilla_transformer/` | 定义并组装标准基线的可替换模型组件 |
+| `src/memory_model/config.py` | 定义层数、隐藏维度、头数等规模参数 |
 | `scripts/train/pretrain.py` | 读取数据、反向传播、更新参数、保存 checkpoint |
 | `scripts/inference/generate.py` | 加载 checkpoint 并调用模型生成文本 |
 

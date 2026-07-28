@@ -1,6 +1,7 @@
 import torch
 
-from tiny_transformer import ModelConfig, TransformerLM
+from memory_model import ModelConfig
+from memory_model.models.vanilla_transformer import TransformerLM
 
 
 def small_model() -> TransformerLM:

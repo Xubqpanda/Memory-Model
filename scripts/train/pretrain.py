@@ -18,9 +18,10 @@ from tqdm.auto import tqdm
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from tiny_transformer import ModelConfig, TransformerLM
-from tiny_transformer.data import BinaryTokenDataset
-from tiny_transformer.training import (
+from memory_model import ModelConfig
+from memory_model.data import BinaryTokenDataset
+from memory_model.models.vanilla_transformer import TransformerLM
+from memory_model.training import (
     TrainingLogger,
     create_local_run_dir,
     initialize_distributed,

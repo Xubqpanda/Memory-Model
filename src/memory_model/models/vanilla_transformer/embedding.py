@@ -1,6 +1,6 @@
 import torch.nn as nn
 
-from ..config import ModelConfig
+from ...config import ModelConfig
 
 
 class TokenEmbedding(nn.Embedding):

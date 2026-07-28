@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..config import ModelConfig
+from ...config import ModelConfig
 from .block import TransformerBlock
 from .embedding import PositionEmbedding, TokenEmbedding
 from .lm_head import LanguageModelHead
@@ -92,7 +92,7 @@ class TransformerLM(nn.Module):
         do_sample: bool = True,
         use_cache: bool = True,
     ) -> torch.Tensor:
-        from ..generation import sample_next_token
+        from ...generation import sample_next_token
 
         if temperature < 0:
             raise ValueError("temperature must be non-negative")

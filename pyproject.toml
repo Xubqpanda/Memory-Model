@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "tiny-transformer"
+name = "memory-model"
 version = "0.1.0"
-description = "A decoder-only Transformer implemented from scratch for study"
+description = "A research codebase for vanilla and memory-augmented language models"
 requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.24",

@@ -1,7 +1,11 @@
 import torch
 
-from tiny_transformer import ModelConfig, TransformerLM
-from tiny_transformer.model import LanguageModelHead, ResidualConnection
+from memory_model import ModelConfig
+from memory_model.models.vanilla_transformer import (
+    LanguageModelHead,
+    ResidualConnection,
+    TransformerLM,
+)
 
 
 def test_residual_connection_adds_sublayer_update():

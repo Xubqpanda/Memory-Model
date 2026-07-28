@@ -1,6 +1,6 @@
 import torch
 
-from tiny_transformer.generation import sample_next_token
+from memory_model.generation import sample_next_token
 
 
 def test_greedy_selects_largest_logit():

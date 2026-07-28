@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from tiny_transformer.training import (
+from memory_model.training import (
     TrainingLogger,
     create_local_run_dir,
     resolve_gradient_accumulation_steps,
