@@ -11,7 +11,7 @@
 - Pre-Norm、残差连接、GELU FFN
 - next-token cross-entropy loss
 - embedding / LM head 权重共享
-- greedy、temperature、top-k、top-p 解码
+- greedy、temperature、top-k、top-p 解码与 EOS 自动停止
 - 推理 KV Cache
 - AdamW、梯度累积、梯度裁剪、warmup + cosine 学习率
 - bf16、checkpoint 保存与恢复

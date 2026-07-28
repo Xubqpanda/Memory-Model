@@ -23,6 +23,7 @@ def main() -> None:
     parser.add_argument("--top-p", type=float, default=0.95)
     parser.add_argument("--greedy", action="store_true")
     parser.add_argument("--no-cache", action="store_true")
+    parser.add_argument("--ignore-eos", action="store_true", help="Continue until max-new-tokens")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = parser.parse_args()
 
@@ -43,8 +44,12 @@ def main() -> None:
         top_p=args.top_p,
         do_sample=not args.greedy,
         use_cache=not args.no_cache,
+        eos_token_id=None if args.ignore_eos else tokenizer.eos_token_id,
     )
-    print(tokenizer.decode(output[0].tolist()))
+    token_ids = output[0].tolist()
+    if tokenizer.eos_token_id is not None and token_ids[-1] == tokenizer.eos_token_id:
+        token_ids.pop()
+    print(tokenizer.decode(token_ids))
 
 
 if __name__ == "__main__":

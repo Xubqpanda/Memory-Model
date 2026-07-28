@@ -6,6 +6,7 @@ class ByteTokenizer:
 
     vocab_size = 256
     name = "byte"
+    eos_token_id = None
 
     def encode(self, text: str) -> list[int]:
         return list(text.encode("utf-8"))
@@ -21,6 +22,7 @@ class TiktokenTokenizer:
         self.encoding = tiktoken.get_encoding(name)
         self.name = name
         self.vocab_size = self.encoding.n_vocab
+        self.eos_token_id = self.encoding.eot_token
 
     def encode(self, text: str) -> list[int]:
         return self.encoding.encode(text, allowed_special=set())

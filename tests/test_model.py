@@ -23,3 +23,29 @@ def test_forward_shape_and_backward():
 def test_weight_tying():
     model = small_model()
     assert model.token_embedding.weight.data_ptr() == model.lm_head.weight.data_ptr()
+
+
+def test_generation_stops_after_eos_token():
+    config = ModelConfig(
+        vocab_size=8,
+        block_size=8,
+        n_layer=1,
+        n_head=1,
+        d_model=8,
+        dropout=0.0,
+        tie_embeddings=False,
+    )
+    model = TransformerLM(config)
+    with torch.no_grad():
+        for parameter in model.parameters():
+            parameter.zero_()
+
+    prompt = torch.tensor([[1, 2]])
+    generated = model.generate(
+        prompt,
+        max_new_tokens=4,
+        do_sample=False,
+        eos_token_id=0,
+    )
+
+    assert generated.tolist() == [[1, 2, 0]]

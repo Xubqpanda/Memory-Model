@@ -91,15 +91,19 @@ class TransformerLM(nn.Module):
         top_p: float | None = None,
         do_sample: bool = True,
         use_cache: bool = True,
+        eos_token_id: int | None = None,
     ) -> torch.Tensor:
         from ...generation import sample_next_token
 
         if temperature < 0:
             raise ValueError("temperature must be non-negative")
+        if eos_token_id is not None and not 0 <= eos_token_id < self.config.vocab_size:
+            raise ValueError("eos_token_id must be inside the model vocabulary")
         was_training = self.training
         self.eval()
         generated = input_ids
         cache = None
+        finished = torch.zeros(input_ids.size(0), dtype=torch.bool, device=input_ids.device)
 
         for _ in range(max_new_tokens):
             # Learned absolute positions cannot exceed block_size. If the context
@@ -119,7 +123,18 @@ class TransformerLM(nn.Module):
                 top_p=top_p,
                 do_sample=do_sample,
             )
+            if eos_token_id is not None:
+                # Keep an already-finished row at EOS while unfinished rows continue.
+                next_token = torch.where(
+                    finished[:, None],
+                    torch.full_like(next_token, eos_token_id),
+                    next_token,
+                )
             generated = torch.cat((generated, next_token), dim=1)
+            if eos_token_id is not None:
+                finished |= next_token.squeeze(1).eq(eos_token_id)
+                if finished.all():
+                    break
 
         self.train(was_training)
         return generated
