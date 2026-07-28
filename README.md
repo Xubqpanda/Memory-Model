@@ -299,6 +299,43 @@ TinyStories 20M 用于验证英文预训练闭环。中文预训练使用下一�
       --top-p 0.95 \
       --device cuda:0
 
+### MiniMind 完整预训练集
+
+完整 pretrain_t2t 数据编码命令：
+
+    /mnt/8t/xubuqiang/anaconda3/bin/python \
+      scripts/data/prepare_minimind.py \
+      --input data/minimind/raw/pretrain_t2t.jsonl \
+      --out-dir data/minimind/pretrain_full \
+      --validation-ratio 0.01 \
+      --batch-size 8192
+
+当前完整数据统计：
+
+    总文档：        8,468,827
+    训练文档：      8,384,378
+    验证文档：         84,449
+    训练 token： 2,186,853,770
+    验证 token：    21,998,827
+
+完整数据配置保持与 mini 实验完全相同的 62M 模型和全局 batch，只改变数据目录与训练步数：
+
+    11,123 steps × 196,608 token/step
+    = 2,186,870,784 sampled tokens
+    ≈ 1.000008 dataset epochs
+
+正式双卡训练：
+
+    unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
+
+    CUDA_VISIBLE_DEVICES=0,1 \
+    /mnt/8t/xubuqiang/anaconda3/bin/python \
+      -m torch.distributed.run \
+      --standalone \
+      --nproc_per_node=2 \
+      scripts/train/pretrain.py \
+      --config configs/minimind_pretrain_full_60m.py
+
 ## 阅读顺序
 
 1. `src/memory_model/models/vanilla_transformer/block.py` 的 `TransformerBlock`
