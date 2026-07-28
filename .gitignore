@@ -10,9 +10,8 @@ dist/
 .ruff_cache/
 .idea/
 .vscode/
-data/**/*.bin
-data/**/*.json
-data/**/*.tmp
+data/**
+!data/.gitkeep
 checkpoints/**/*.pt
 checkpoints/**/wandb/
 wandb/
