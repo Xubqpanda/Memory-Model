@@ -13,3 +13,5 @@ dist/
 data/**/*.bin
 data/**/*.json
 checkpoints/**/*.pt
+checkpoints/**/wandb/
+wandb/

@@ -15,6 +15,7 @@
 - 推理 KV Cache
 - AdamW、梯度累积、梯度裁剪、warmup + cosine 学习率
 - bf16、checkpoint 保存与恢复
+- Weights & Biases 在线实验跟踪与断点续写
 - toy 数据和 TinyStories 数据准备
 - 约 20M 和 125M 参数的实验配置
 
@@ -41,6 +42,13 @@ cd /mnt/20t/xubuqiang/Study/Memory-Model
 python -m pip install -e '.[data,dev]'
 ```
 
+如需在线实验跟踪：
+
+```bash
+python -m pip install -e '.[data,dev,tracking]'
+wandb login
+```
+
 不安装项目也可以直接运行 `scripts/` 中的入口。
 
 ## 2. 最小闭环
@@ -61,6 +69,34 @@ pytest -q
 
 ```bash
 python scripts/train/pretrain.py --config configs/tiny_debug.py --max-steps 20
+```
+
+可以为实验指定容易辨认的名称：
+
+```bash
+python scripts/train/pretrain.py \
+  --config configs/tiny_debug.py \
+  --wandb-run-name tiny-debug-baseline-200steps
+```
+
+默认会记录到 `Zjunlp-Xubqpanda/Memory-Model`。临时关闭或改为离线记录：
+
+```bash
+python scripts/train/pretrain.py \
+  --config configs/tiny_debug.py \
+  --max-steps 20 \
+  --wandb-mode disabled
+
+python scripts/train/pretrain.py \
+  --config configs/tiny_debug.py \
+  --max-steps 20 \
+  --wandb-mode offline
+```
+
+W&B 本地运行日志统一保存在项目根目录的 `wandb/` 中，并由 `.gitignore` 排除。在线初始化失败时，训练会自动降级为离线记录；网络恢复后可以执行：
+
+```bash
+wandb sync wandb/offline-run-*
 ```
 
 用 checkpoint 生成文本：

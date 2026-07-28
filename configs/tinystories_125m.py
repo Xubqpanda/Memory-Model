@@ -27,4 +27,11 @@ train = dict(
     dtype="bfloat16",
     compile=True,
     seed=1337,
+    wandb_mode="online",
+    wandb_entity="Zjunlp-Xubqpanda",
+    wandb_project="Memory-Model",
+    wandb_run_name="tinystories-125m-baseline",
+    wandb_tags=["baseline", "tinystories", "125m"],
+    wandb_init_timeout=30,
+    wandb_fallback_offline=True,
 )

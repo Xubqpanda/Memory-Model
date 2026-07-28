@@ -26,4 +26,11 @@ train = dict(
     dtype="float32",
     compile=False,
     seed=1337,
+    wandb_mode="online",
+    wandb_entity="Zjunlp-Xubqpanda",
+    wandb_project="Memory-Model",
+    wandb_run_name="tiny-debug-baseline",
+    wandb_tags=["baseline", "debug", "toy"],
+    wandb_init_timeout=30,
+    wandb_fallback_offline=True,
 )
