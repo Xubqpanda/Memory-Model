@@ -20,15 +20,15 @@ train = dict(
     batch_size=128,
     gradient_accumulation_steps=2,
     target_tokens_per_step=196608,
-    # 11,123 × 196,608 = 2,186,870,784 sampled tokens, almost exactly one
-    # pass over the 2,186,853,770-token training split.
-    max_steps=11123,
-    eval_interval=250,
+    # Five passes over the 2,186,853,770-token training split.
+    max_steps=55615,
+    epoch_checkpoint_steps=[11123, 22246, 33369, 44492, 55615],
+    eval_interval=500,
     eval_batches=30,
     log_interval=10,
     learning_rate=4e-4,
     min_lr=4e-5,
-    warmup_steps=500,
+    warmup_steps=1000,
     weight_decay=0.1,
     grad_clip=1.0,
     dtype="bfloat16",

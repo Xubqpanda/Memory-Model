@@ -318,11 +318,19 @@ TinyStories 20M 用于验证英文预训练闭环。中文预训练使用下一�
     训练 token： 2,186,853,770
     验证 token：    21,998,827
 
-完整数据配置保持与 mini 实验完全相同的 62M 模型和全局 batch，只改变数据目录与训练步数：
+完整数据配置保持与 mini 实验完全相同的 62M 模型和全局 batch，从头训练 5 个数据 epoch：
 
-    11,123 steps × 196,608 token/step
-    = 2,186,870,784 sampled tokens
-    ≈ 1.000008 dataset epochs
+    55,615 steps × 196,608 token/step
+    = 10,934,353,920 sampled tokens
+    ≈ 5.000039 dataset epochs
+
+训练器在每个 epoch 边界强制验证并保存独立 checkpoint：
+
+    epoch 1：completed step 11,123 → epoch_1.pt
+    epoch 2：completed step 22,246 → epoch_2.pt
+    epoch 3：completed step 33,369 → epoch_3.pt
+    epoch 4：completed step 44,492 → epoch_4.pt
+    epoch 5：completed step 55,615 → epoch_5.pt
 
 正式双卡训练：
 

@@ -251,6 +251,16 @@ def main() -> None:
         * accumulation
         * distributed.world_size
     )
+    configured_epoch_steps = list(train_config.get("epoch_checkpoint_steps", []))
+    if configured_epoch_steps != sorted(set(configured_epoch_steps)):
+        raise ValueError("epoch_checkpoint_steps must be unique and strictly increasing")
+    if any(step <= 0 for step in configured_epoch_steps):
+        raise ValueError("epoch_checkpoint_steps must contain positive completed-step counts")
+    epoch_checkpoint_by_step = {
+        completed_step: epoch_number
+        for epoch_number, completed_step in enumerate(configured_epoch_steps, start=1)
+        if completed_step <= train_config["max_steps"]
+    }
     parameter_count = raw_model.num_parameters()
     total_planned_tokens = train_config["max_steps"] * tokens_per_step
     remaining_tokens = max(0, train_config["max_steps"] - start_step) * tokens_per_step
@@ -316,6 +326,14 @@ def main() -> None:
             f"compile={train_config.get('compile', False)} | "
             f"fused optimizer={device.type == 'cuda' and train_config.get('fused_optimizer', True)}"
         )
+        if epoch_checkpoint_by_step:
+            local_logger.write(
+                "epoch checkpoints: "
+                + ", ".join(
+                    f"epoch {epoch} at completed step {completed_step:,}"
+                    for completed_step, epoch in epoch_checkpoint_by_step.items()
+                )
+            )
 
     # Workers wait while rank 0 initializes W&B and local logs.
     distributed.barrier()
@@ -356,6 +374,8 @@ def main() -> None:
                 window_tokens += tokens_per_step
 
             is_last_step = step == train_config["max_steps"] - 1
+            completed_steps = step + 1
+            completed_epoch = epoch_checkpoint_by_step.get(completed_steps)
             should_log = step % train_config["log_interval"] == 0 or is_last_step
             mean_loss = loss_accumulator
             if should_log:
@@ -411,7 +431,11 @@ def main() -> None:
                     window_steps = 0
                     window_tokens = 0
 
-            should_eval = step % train_config["eval_interval"] == 0 or is_last_step
+            should_eval = (
+                step % train_config["eval_interval"] == 0
+                or is_last_step
+                or completed_epoch is not None
+            )
             if should_eval:
                 distributed.barrier()
                 if distributed.is_master:
@@ -466,13 +490,20 @@ def main() -> None:
                         wandb_run,
                         local_run_dir,
                     )
+                    if completed_epoch is not None:
+                        payload["completed_epoch"] = completed_epoch
                     latest_path = out_dir / "latest.pt"
                     torch.save(payload, latest_path)
                     if improved:
                         torch.save(payload, out_dir / "best.pt")
+                    epoch_path = None
+                    if completed_epoch is not None:
+                        epoch_path = out_dir / f"epoch_{completed_epoch}.pt"
+                        torch.save(payload, epoch_path)
                     local_logger.write(
                         f"checkpoint saved: {latest_path}"
                         + (f" and {out_dir / 'best.pt'}" if improved else "")
+                        + (f" and {epoch_path}" if epoch_path is not None else "")
                     )
                     # Do not charge evaluation/checkpoint time to the next training throughput window.
                     window_start = time.perf_counter()
