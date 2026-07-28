@@ -110,27 +110,90 @@ python scripts/inference/generate.py \
 
 ## 3. TinyStories
 
-先用少量故事验证下载和预处理流程：
+TinyStories 完整训练集约有 212 万篇故事、约 4.45 亿 GPT-2 token，压缩下载量约 1GB。当前网络环境可以通过 Hugging Face 镜像准备数据：
 
 ```bash
-python scripts/data/prepare_tinystories.py --limit-train 10000 --limit-val 1000
-python scripts/train/pretrain.py --config configs/tinystories_20m.py --max-steps 100
+cd /mnt/20t/xubuqiang/Study/Memory-Model
+
+/mnt/8t/xubuqiang/anaconda3/bin/python \
+  scripts/data/prepare_tinystories.py \
+  --hf-endpoint https://hf-mirror.com \
+  --batch-size 1000 \
+  --num-workers 16
 ```
 
-确认无误后，删除 `data/tinystories_gpt2` 并处理完整数据：
+处理完成后会生成：
+
+```text
+data/tinystories_gpt2/
+├── train.bin
+├── val.bin
+└── meta.json
+```
+
+正式训练 20M baseline。W&B 直连可用，而本地 Git/Hugging Face 代理可能干扰 W&B，因此训练前显式取消代理：
 
 ```bash
-python scripts/data/prepare_tinystories.py
-python scripts/train/pretrain.py --config configs/tinystories_20m.py
+unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
+
+CUDA_VISIBLE_DEVICES=0 \
+/mnt/8t/xubuqiang/anaconda3/bin/python \
+  scripts/train/pretrain.py \
+  --config configs/tinystories_20m.py
 ```
 
-125M 配置：
+当前配置训练 8,000 steps，每步 65,536 token，总计约 5.24 亿采样 token。终端 tqdm 会显示 loss、val loss、学习率、梯度、吞吐量和 ETA。
+
+本地日志保存在：
+
+```text
+logs/tinystories-20m-baseline/<timestamp>/
+├── train.log
+├── metrics.jsonl
+└── config.json
+```
+
+checkpoint 保存在：
+
+```text
+checkpoints/tinystories_20m/
+├── latest.pt
+└── best.pt
+```
+
+中断后继续训练：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 \
+/mnt/8t/xubuqiang/anaconda3/bin/python \
+  scripts/train/pretrain.py \
+  --config configs/tinystories_20m.py \
+  --resume checkpoints/tinystories_20m/latest.pt
+```
+
+如果只想先验证 20M 模型能否运行，可以准备较小数据并执行短训练：
+
+```bash
+/mnt/8t/xubuqiang/anaconda3/bin/python \
+  scripts/data/prepare_tinystories.py \
+  --hf-endpoint https://hf-mirror.com \
+  --limit-train 10000 \
+  --limit-val 1000
+
+CUDA_VISIBLE_DEVICES=0 \
+/mnt/8t/xubuqiang/anaconda3/bin/python \
+  scripts/train/pretrain.py \
+  --config configs/tinystories_20m.py \
+  --max-steps 100
+```
+
+125M 配置保留用于后续 MiniMind 中文基础模型实验：
 
 ```bash
 python scripts/train/pretrain.py --config configs/tinystories_125m.py
 ```
 
-第一阶段建议先让 debug 模型明显降低 loss，再训练 20M。125M 配置用于第二阶段；它会消耗更多训练时间，不应在代码尚未验证时直接长跑。
+第一阶段先完成 TinyStories 20M。第二阶段将数据入口切换为 MiniMind 中文预训练数据，再使用 125M 或更大配置继续 SFT、DPO 与 RL。
 
 ## 阅读顺序
 

@@ -12,12 +12,14 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from tqdm.auto import tqdm
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from tiny_transformer import ModelConfig, TransformerLM
 from tiny_transformer.data import BinaryTokenDataset
+from tiny_transformer.training import TrainingLogger, create_local_run_dir
 
 
 def load_config(path: Path) -> tuple[dict, dict]:
@@ -38,12 +40,20 @@ def cosine_lr(step: int, config: dict) -> float:
 
 
 @torch.inference_mode()
-def estimate_loss(model, dataset, train_config, device, amp_context) -> dict[str, float]:
+def estimate_loss(model, dataset, train_config, device, amp_context, enable_tqdm: bool) -> dict[str, float]:
     model.eval()
     result = {}
     for split in ("train", "val"):
         losses = []
-        for _ in range(train_config["eval_batches"]):
+        batches = tqdm(
+            range(train_config["eval_batches"]),
+            desc=f"eval {split}",
+            unit="batch",
+            dynamic_ncols=True,
+            leave=False,
+            disable=not enable_tqdm,
+        )
+        for _ in batches:
             x, y = dataset.get_batch(split, train_config["batch_size"], device)
             with amp_context():
                 losses.append(model(x, targets=y).loss.item())
@@ -103,12 +113,37 @@ def init_wandb(
     return run
 
 
+def checkpoint_payload(
+    raw_model,
+    optimizer,
+    model_config,
+    train_config,
+    step: int,
+    val_loss: float,
+    best_val_loss: float,
+    wandb_run,
+    local_run_dir: Path,
+) -> dict:
+    return {
+        "model": raw_model.state_dict(),
+        "optimizer": optimizer.state_dict(),
+        "model_config": model_config.to_dict(),
+        "train_config": train_config,
+        "step": step,
+        "val_loss": val_loss,
+        "best_val_loss": best_val_loss,
+        "wandb_run_id": None if wandb_run is None else wandb_run.id,
+        "local_run_dir": str(local_run_dir),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="configs/tiny_debug.py")
     parser.add_argument("--resume", default=None)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--max-steps", type=int, default=None, help="Override config for a smoke test")
+    parser.add_argument("--no-tqdm", action="store_true", help="Disable the terminal progress bar")
     parser.add_argument(
         "--wandb-mode",
         choices=("online", "offline", "disabled"),
@@ -118,7 +153,8 @@ def main() -> None:
     parser.add_argument("--wandb-run-name", default=None, help="Override the W&B display name")
     args = parser.parse_args()
 
-    model_dict, train_config = load_config(PROJECT_ROOT / args.config)
+    config_path = PROJECT_ROOT / args.config
+    model_dict, train_config = load_config(config_path)
     train_config = dict(train_config)
     if args.max_steps is not None:
         train_config["max_steps"] = args.max_steps
@@ -148,10 +184,14 @@ def main() -> None:
         betas=(0.9, 0.95),
         weight_decay=train_config["weight_decay"],
     )
+
     start_step = 0
     checkpoint = None
     if args.resume:
-        checkpoint = torch.load(args.resume, map_location=device, weights_only=False)
+        checkpoint_path = Path(args.resume)
+        if not checkpoint_path.is_absolute():
+            checkpoint_path = PROJECT_ROOT / checkpoint_path
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
         model.load_state_dict(checkpoint["model"])
         optimizer.load_state_dict(checkpoint["optimizer"])
         start_step = checkpoint["step"] + 1
@@ -164,9 +204,43 @@ def main() -> None:
     dataset = BinaryTokenDataset(data_dir, model_config.block_size)
     out_dir = PROJECT_ROOT / train_config["out_dir"]
     out_dir.mkdir(parents=True, exist_ok=True)
+
     accumulation = train_config["gradient_accumulation_steps"]
     tokens_per_step = train_config["batch_size"] * model_config.block_size * accumulation
     parameter_count = raw_model.num_parameters()
+    total_planned_tokens = train_config["max_steps"] * tokens_per_step
+    remaining_tokens = max(0, train_config["max_steps"] - start_step) * tokens_per_step
+    equivalent_epochs = total_planned_tokens / len(dataset.train)
+
+    run_name = train_config.get("wandb_run_name") or config_path.stem
+    resume_dir = None if checkpoint is None else checkpoint.get("local_run_dir")
+    local_run_dir = create_local_run_dir(PROJECT_ROOT, run_name, resume_dir)
+    local_logger = TrainingLogger(
+        local_run_dir,
+        total_steps=train_config["max_steps"],
+        start_step=start_step,
+        enable_tqdm=not args.no_tqdm,
+    )
+    local_logger.save_config(
+        {
+            "config_path": str(config_path),
+            "model": model_config.to_dict(),
+            "training": train_config,
+            "runtime": {
+                "device": str(device),
+                "gpu": torch.cuda.get_device_name(device) if device.type == "cuda" else None,
+                "parameter_count": parameter_count,
+                "tokens_per_step": tokens_per_step,
+                "total_planned_tokens": total_planned_tokens,
+                "remaining_tokens": remaining_tokens,
+                "train_dataset_tokens": len(dataset.train),
+                "val_dataset_tokens": len(dataset.val),
+                "equivalent_train_epochs": equivalent_epochs,
+                "start_step": start_step,
+            },
+        }
+    )
+
     resume_id = None if checkpoint is None else checkpoint.get("wandb_run_id")
     wandb_run = init_wandb(
         model_config,
@@ -175,70 +249,171 @@ def main() -> None:
         args.wandb_mode,
         resume_id,
     )
-    print(f"device={device}, parameters={parameter_count:,}, tokens/step={tokens_per_step:,}")
+
+    local_logger.write(f"run directory: {local_run_dir}")
+    local_logger.write(f"checkpoint directory: {out_dir}")
+    local_logger.write(
+        f"device={device} | dtype={dtype_name} | parameters={parameter_count:,} | "
+        f"layers={model_config.n_layer} | heads={model_config.n_head} | d_model={model_config.d_model}"
+    )
+    local_logger.write(
+        f"train tokens={len(dataset.train):,} | val tokens={len(dataset.val):,} | "
+        f"tokens/step={tokens_per_step:,} | planned tokens={total_planned_tokens:,} | "
+        f"equivalent epochs={equivalent_epochs:.2f}"
+    )
+    local_logger.write(
+        f"steps={start_step:,}->{train_config['max_steps']:,} | batch={train_config['batch_size']} | "
+        f"sequence={model_config.block_size} | accumulation={accumulation} | compile={train_config.get('compile', False)}"
+    )
+
+    best_val_loss = float("inf") if checkpoint is None else checkpoint.get("best_val_loss", float("inf"))
+    last_val_loss = None if checkpoint is None else checkpoint.get("val_loss")
+    window_start = time.perf_counter()
+    window_steps = 0
+    window_tokens = 0
 
     model.train()
-    for step in range(start_step, train_config["max_steps"]):
-        tick = time.perf_counter()
-        lr = cosine_lr(step, train_config)
-        for group in optimizer.param_groups:
-            group["lr"] = lr
-        optimizer.zero_grad(set_to_none=True)
-        loss_accumulator = 0.0
+    try:
+        for step in range(start_step, train_config["max_steps"]):
+            lr = cosine_lr(step, train_config)
+            for group in optimizer.param_groups:
+                group["lr"] = lr
+            optimizer.zero_grad(set_to_none=True)
+            loss_accumulator = 0.0
 
-        for _ in range(accumulation):
-            x, y = dataset.get_batch("train", train_config["batch_size"], device)
-            with amp_context():
-                loss = model(x, targets=y).loss / accumulation
-            loss.backward()
-            loss_accumulator += loss.detach().item()
+            for _ in range(accumulation):
+                x, y = dataset.get_batch("train", train_config["batch_size"], device)
+                with amp_context():
+                    loss = model(x, targets=y).loss / accumulation
+                loss.backward()
+                loss_accumulator += loss.detach().item()
 
-        grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), train_config["grad_clip"])
-        optimizer.step()
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), train_config["grad_clip"])
+            optimizer.step()
+            local_logger.advance()
+            window_steps += 1
+            window_tokens += tokens_per_step
 
-        if step % train_config["log_interval"] == 0:
-            elapsed_ms = (time.perf_counter() - tick) * 1000
-            print(f"step {step:6d} | loss {loss_accumulator:.4f} | lr {lr:.2e} | grad {grad_norm:.3f} | {elapsed_ms:.1f} ms")
-            if wandb_run is not None:
-                wandb_run.log(
-                    {
-                        "train/step": step,
-                        "train/loss": loss_accumulator,
-                        "train/learning_rate": lr,
-                        "train/gradient_norm": float(grad_norm),
-                        "train/tokens_seen": (step + 1) * tokens_per_step,
-                        "performance/step_time_ms": elapsed_ms,
-                        "performance/tokens_per_second": tokens_per_step / max(elapsed_ms / 1000, 1e-9),
-                    }
+            is_last_step = step == train_config["max_steps"] - 1
+            should_log = step % train_config["log_interval"] == 0 or is_last_step
+            if should_log:
+                elapsed = time.perf_counter() - window_start
+                average_step_ms = elapsed * 1000 / max(window_steps, 1)
+                tokens_per_second = window_tokens / max(elapsed, 1e-9)
+                grad_norm_value = float(grad_norm)
+                train_metrics = {
+                    "loss": loss_accumulator,
+                    "learning_rate": lr,
+                    "gradient_norm": grad_norm_value,
+                    "tokens_seen": (step + 1) * tokens_per_step,
+                    "step_time_ms": average_step_ms,
+                    "tokens_per_second": tokens_per_second,
+                }
+                if device.type == "cuda":
+                    train_metrics["gpu_memory_allocated_gb"] = torch.cuda.memory_allocated(device) / 1024**3
+                    train_metrics["gpu_memory_reserved_gb"] = torch.cuda.memory_reserved(device) / 1024**3
+
+                local_logger.log_metrics("train", step, train_metrics)
+                local_logger.write(
+                    f"step {step:6d}/{train_config['max_steps'] - 1} | "
+                    f"loss {loss_accumulator:.4f} | lr {lr:.3e} | grad {grad_norm_value:.3f} | "
+                    f"{tokens_per_second:,.0f} tok/s | {average_step_ms:.1f} ms/step"
                 )
-
-        should_eval = step % train_config["eval_interval"] == 0 or step == train_config["max_steps"] - 1
-        if should_eval:
-            losses = estimate_loss(raw_model, dataset, train_config, device, amp_context)
-            print(f"evaluation | train {losses['train']:.4f} | val {losses['val']:.4f}")
-            if wandb_run is not None:
-                wandb_run.log(
-                    {
-                        "train/step": step,
-                        "eval/train_loss": losses["train"],
-                        "eval/val_loss": losses["val"],
-                    }
+                local_logger.set_postfix(
+                    loss=loss_accumulator,
+                    val=last_val_loss,
+                    lr=f"{lr:.2e}",
+                    grad=grad_norm_value,
+                    tok_s=f"{tokens_per_second:,.0f}",
                 )
-                best_val_loss = wandb_run.summary.get("best_val_loss", float("inf"))
-                wandb_run.summary["best_val_loss"] = min(best_val_loss, losses["val"])
-            checkpoint = {
-                "model": raw_model.state_dict(),
-                "optimizer": optimizer.state_dict(),
-                "model_config": model_config.to_dict(),
-                "train_config": train_config,
-                "step": step,
-                "val_loss": losses["val"],
-                "wandb_run_id": None if wandb_run is None else wandb_run.id,
-            }
-            torch.save(checkpoint, out_dir / "latest.pt")
+                if wandb_run is not None:
+                    wandb_run.log(
+                        {
+                            "train/step": step,
+                            "train/loss": loss_accumulator,
+                            "train/learning_rate": lr,
+                            "train/gradient_norm": grad_norm_value,
+                            "train/tokens_seen": (step + 1) * tokens_per_step,
+                            "performance/step_time_ms": average_step_ms,
+                            "performance/tokens_per_second": tokens_per_second,
+                            **{
+                                f"performance/{key}": value
+                                for key, value in train_metrics.items()
+                                if key.startswith("gpu_memory_")
+                            },
+                        }
+                    )
+                window_start = time.perf_counter()
+                window_steps = 0
+                window_tokens = 0
 
-    if wandb_run is not None:
-        wandb_run.finish()
+            should_eval = step % train_config["eval_interval"] == 0 or is_last_step
+            if should_eval:
+                eval_start = time.perf_counter()
+                local_logger.write(f"evaluation started at step {step}")
+                losses = estimate_loss(
+                    raw_model,
+                    dataset,
+                    train_config,
+                    device,
+                    amp_context,
+                    enable_tqdm=not args.no_tqdm,
+                )
+                eval_seconds = time.perf_counter() - eval_start
+                last_val_loss = losses["val"]
+                improved = losses["val"] < best_val_loss
+                best_val_loss = min(best_val_loss, losses["val"])
+                eval_metrics = {
+                    "train_loss": losses["train"],
+                    "val_loss": losses["val"],
+                    "best_val_loss": best_val_loss,
+                    "duration_seconds": eval_seconds,
+                    "improved": improved,
+                }
+                local_logger.log_metrics("eval", step, eval_metrics)
+                local_logger.write(
+                    f"evaluation step {step:6d} | train {losses['train']:.4f} | "
+                    f"val {losses['val']:.4f} | best {best_val_loss:.4f} | "
+                    f"duration {eval_seconds:.1f}s | improved={improved}"
+                )
+                local_logger.set_postfix(loss=loss_accumulator, val=losses["val"], lr=f"{lr:.2e}")
+
+                if wandb_run is not None:
+                    wandb_run.log(
+                        {
+                            "train/step": step,
+                            "eval/train_loss": losses["train"],
+                            "eval/val_loss": losses["val"],
+                            "eval/duration_seconds": eval_seconds,
+                        }
+                    )
+                    wandb_run.summary["best_val_loss"] = best_val_loss
+
+                payload = checkpoint_payload(
+                    raw_model,
+                    optimizer,
+                    model_config,
+                    train_config,
+                    step,
+                    losses["val"],
+                    best_val_loss,
+                    wandb_run,
+                    local_run_dir,
+                )
+                latest_path = out_dir / "latest.pt"
+                torch.save(payload, latest_path)
+                if improved:
+                    torch.save(payload, out_dir / "best.pt")
+                local_logger.write(
+                    f"checkpoint saved: {latest_path}"
+                    + (f" and {out_dir / 'best.pt'}" if improved else "")
+                )
+                # Do not charge evaluation/checkpoint time to the next training throughput window.
+                window_start = time.perf_counter()
+    finally:
+        if wandb_run is not None:
+            wandb_run.finish()
+        local_logger.close()
 
 
 if __name__ == "__main__":

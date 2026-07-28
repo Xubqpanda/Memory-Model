@@ -12,6 +12,8 @@ dist/
 .vscode/
 data/**/*.bin
 data/**/*.json
+data/**/*.tmp
 checkpoints/**/*.pt
 checkpoints/**/wandb/
 wandb/
+logs/

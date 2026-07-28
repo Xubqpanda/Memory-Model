@@ -15,7 +15,8 @@ train = dict(
     out_dir="checkpoints/tinystories_20m",
     batch_size=32,
     gradient_accumulation_steps=8,
-    max_steps=20000,
+    # 8,000 × 65,536 ≈ 524M sampled tokens, close to one full TinyStories pass.
+    max_steps=8000,
     eval_interval=250,
     eval_batches=50,
     log_interval=10,
