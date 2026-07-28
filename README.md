@@ -17,7 +17,7 @@
 - bf16、checkpoint 保存与恢复
 - Weights & Biases 在线实验跟踪与断点续写
 - toy 数据和 TinyStories 数据准备
-- 约 20M 和 125M 参数的实验配置
+- 约 20M、60M 和 125M 参数的实验配置
 
 ## 目录
 
@@ -201,13 +201,103 @@ CUDA_VISIBLE_DEVICES=0 \
   --max-steps 100
 ```
 
-125M 配置保留用于后续 MiniMind 中文基础模型实验：
+125M 配置保留用于后续更大规模实验：
 
 ```bash
 python scripts/train/pretrain.py --config configs/tinystories_125m.py
 ```
 
-第一阶段先完成 TinyStories 20M。第二阶段将数据入口切换为 MiniMind 中文预训练数据，再使用 125M 或更大配置继续 SFT、DPO 与 RL。
+TinyStories 20M 用于验证英文预训练闭环。中文预训练使用下一节的 MiniMind 60M baseline，后续再扩展到更大模型以及 SFT、DPO 与 RL。
+
+## 4. MiniMind 中文预训练
+
+当前使用 MiniMind 官方的 6,400 词表 tokenizer，资产保存在：
+
+    assets/tokenizers/minimind/
+    ├── tokenizer.json
+    ├── tokenizer_config.json
+    ├── special_tokens_map.json
+    └── chat_template.jinja
+
+这里复用 MiniMind 的 tokenizer 和数据，但模型仍然是我们手写的 vanilla Transformer baseline：
+
+    8 Transformer blocks
+    8 attention heads
+    d_model = 768
+    d_ff = 3072
+    learned absolute position embedding
+    LayerNorm + GELU + MHA
+    总参数量 = 62,141,184
+
+它不是 MiniMind-3 官方的 Qwen3 风格模型；保留 vanilla 架构是为了后续进行清楚的结构消融。
+
+将下载的原始文件放在：
+
+    data/minimind/raw/pretrain_t2t_mini.jsonl
+
+编码为训练可直接随机读取的 uint16 token 文件：
+
+    /mnt/8t/xubuqiang/anaconda3/bin/python \
+      scripts/data/prepare_minimind.py \
+      --input data/minimind/raw/pretrain_t2t_mini.jsonl \
+      --out-dir data/minimind/pretrain_mini \
+      --validation-ratio 0.01 \
+      --batch-size 4096
+
+当前 mini 数据处理结果：
+
+    总文档：      1,270,238
+    训练文档：    1,257,552
+    验证文档：       12,686
+    训练 token： 327,910,695
+    验证 token：   3,314,391
+
+正式双卡预训练：
+
+    unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
+
+    CUDA_VISIBLE_DEVICES=0,1 \
+    /mnt/8t/xubuqiang/anaconda3/bin/python \
+      -m torch.distributed.run \
+      --standalone \
+      --nproc_per_node=2 \
+      scripts/train/pretrain.py \
+      --config configs/minimind_pretrain_60m.py
+
+训练规模：
+
+    2 GPU × 每卡 batch 128 × sequence 768 × accumulation 1
+    = 196,608 token/step
+
+    6,400 steps × 196,608 token
+    = 1,258,291,200 sampled tokens
+    ≈ 3.84 dataset epochs
+    ≈ 20.2 training tokens/parameter
+
+双卡 smoke test 的稳定训练吞吐约为 625K token/s，每卡 reserved 显存约 28.1GB。第一次 step 包含 torch.compile 编译时间，不代表后续训练速度。
+
+中断后继续：
+
+    CUDA_VISIBLE_DEVICES=0,1 \
+    /mnt/8t/xubuqiang/anaconda3/bin/python \
+      -m torch.distributed.run \
+      --standalone \
+      --nproc_per_node=2 \
+      scripts/train/pretrain.py \
+      --config configs/minimind_pretrain_60m.py \
+      --resume checkpoints/minimind_pretrain_60m/latest.pt
+
+训练完成后生成中文：
+
+    /mnt/8t/xubuqiang/anaconda3/bin/python \
+      scripts/inference/generate.py \
+      --checkpoint checkpoints/minimind_pretrain_60m/best.pt \
+      --prompt "人工智能的发展" \
+      --max-new-tokens 200 \
+      --temperature 0.8 \
+      --top-k 50 \
+      --top-p 0.95 \
+      --device cuda:0
 
 ## 阅读顺序
 

@@ -193,6 +193,7 @@ def main() -> None:
         lr=train_config["learning_rate"],
         betas=(0.9, 0.95),
         weight_decay=train_config["weight_decay"],
+        fused=device.type == "cuda" and train_config.get("fused_optimizer", True),
     )
 
     start_step = 0
@@ -312,7 +313,8 @@ def main() -> None:
         local_logger.write(
             f"steps={start_step:,}->{train_config['max_steps']:,} | per-GPU batch={train_config['batch_size']} | "
             f"sequence={model_config.block_size} | accumulation={accumulation} | "
-            f"compile={train_config.get('compile', False)}"
+            f"compile={train_config.get('compile', False)} | "
+            f"fused optimizer={device.type == 'cuda' and train_config.get('fused_optimizer', True)}"
         )
 
     # Workers wait while rank 0 initializes W&B and local logs.
