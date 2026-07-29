@@ -92,3 +92,64 @@ class SupervisedBinaryDataset:
             y.to(device, non_blocking=pin),
             supervised_tokens,
         )
+
+
+class PreferenceBinaryDataset:
+    """Fixed-length chosen/rejected pairs for preference optimization."""
+
+    def __init__(self, data_dir: str | Path) -> None:
+        self.data_dir = Path(data_dir)
+        self.metadata = json.loads((self.data_dir / "meta.json").read_text(encoding="utf-8"))
+        self.sequence_length = int(self.metadata["sequence_length"])
+        self.block_size = self.sequence_length - 1
+        self._tokens: dict[tuple[str, str], np.memmap] = {}
+        self._masks: dict[tuple[str, str], np.memmap] = {}
+        self._example_counts: dict[str, int] = {}
+
+        for split in ("train", "val"):
+            count = int(self.metadata[f"{split}_examples"])
+            self._example_counts[split] = count
+            for side in ("chosen", "rejected"):
+                key = (split, side)
+                self._tokens[key] = np.memmap(
+                    self.data_dir / f"{split}_{side}_tokens.bin",
+                    dtype=np.uint16,
+                    mode="r",
+                    shape=(count, self.sequence_length),
+                )
+                self._masks[key] = np.memmap(
+                    self.data_dir / f"{split}_{side}_loss_mask.bin",
+                    dtype=np.uint8,
+                    mode="r",
+                    shape=(count, self.sequence_length),
+                )
+
+    def num_examples(self, split: str) -> int:
+        return self._example_counts[split]
+
+    def get_batch(
+        self,
+        split: str,
+        indices: np.ndarray | torch.Tensor | list[int],
+        device: torch.device,
+    ) -> dict[str, torch.Tensor]:
+        if isinstance(indices, torch.Tensor):
+            indices = indices.detach().cpu().numpy()
+        indices = np.asarray(indices, dtype=np.int64)
+        pin = device.type == "cuda"
+        batch: dict[str, torch.Tensor] = {}
+
+        for side in ("chosen", "rejected"):
+            rows = np.asarray(self._tokens[(split, side)][indices], dtype=np.int64)
+            masks = np.asarray(self._masks[(split, side)][indices], dtype=np.bool_)
+            x = torch.from_numpy(rows[:, :-1].copy())
+            y = torch.from_numpy(rows[:, 1:].copy())
+            target_mask = torch.from_numpy(masks[:, 1:].copy())
+            if pin:
+                x = x.pin_memory()
+                y = y.pin_memory()
+                target_mask = target_mask.pin_memory()
+            batch[f"x_{side}"] = x.to(device, non_blocking=pin)
+            batch[f"y_{side}"] = y.to(device, non_blocking=pin)
+            batch[f"mask_{side}"] = target_mask.to(device, non_blocking=pin)
+        return batch

@@ -362,6 +362,59 @@ python scripts/inference/web_chat.py \
 这里的 `cuda:0` 指 `CUDA_VISIBLE_DEVICES=1` 映射后的第一张可见 GPU，也就是物理 GPU 1。
 网页会保留多轮 user/assistant 历史，并在超出 768-token 上下文前按完整轮次丢弃最早消息。
 
+## 6. MiniMind DPO
+
+DPO 从 SFT `best.pt` 初始化可训练 Policy，同时冻结同一个 SFT checkpoint 作为 Reference。
+每条数据包含同一 Prompt 下的 chosen 和 rejected 回答，loss 只统计 Assistant token。
+
+编码 17,166 个偏好对：
+
+```bash
+python scripts/data/prepare_minimind_dpo.py \
+  --input data/minimind/raw/dpo.jsonl \
+  --out-dir data/minimind/dpo \
+  --block-size 768 \
+  --validation-ratio 0.05 \
+  --batch-size 512
+```
+
+当前处理结果：
+
+```text
+训练偏好对：16,186
+验证偏好对：850
+chosen 截断：2,510
+rejected 截断：2,252
+```
+
+双卡正式 DPO：
+
+```bash
+unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
+
+CUDA_VISIBLE_DEVICES=0,1 \
+python -m torch.distributed.run \
+  --standalone \
+  --nproc_per_node=2 \
+  scripts/train/dpo.py \
+  --config configs/minimind_dpo_60m.py
+```
+
+默认配置使用每卡 32 个 preference pairs、全局 batch 64、`beta=0.1`、学习率 `5e-7`，
+训练 1 个 epoch，约 253 optimizer steps。DPO 训练默认关闭 dropout 和 torch.compile，
+确保 Policy 与 Reference 的 log-probability 数值路径一致。
+
+DPO checkpoint 可直接通过同一个网页测试：
+
+```bash
+CUDA_VISIBLE_DEVICES=1 \
+python scripts/inference/web_chat.py \
+  --checkpoint checkpoints/minimind_dpo_60m/best.pt \
+  --device cuda:0 \
+  --server-name 0.0.0.0 \
+  --port 7862
+```
+
 训练完成后生成中文：
 
     /mnt/8t/xubuqiang/anaconda3/bin/python \

@@ -26,8 +26,9 @@ from memory_model.tokenizer import get_tokenizer
 class ChatHarness:
     def __init__(self, checkpoint_path: Path, device: torch.device) -> None:
         checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
-        if checkpoint.get("training_stage") != "sft":
-            raise ValueError("web_chat.py requires an SFT checkpoint")
+        self.training_stage = checkpoint.get("training_stage")
+        if self.training_stage not in {"sft", "dpo"}:
+            raise ValueError("web_chat.py requires an SFT or DPO checkpoint")
 
         self.config = ModelConfig(**checkpoint["model_config"])
         self.model = TransformerLM(self.config).to(device)
@@ -119,7 +120,10 @@ class ChatHarness:
 
 
 def build_demo(harness: ChatHarness) -> gr.Blocks:
-    description = f"Checkpoint: {harness.checkpoint_path} · step {harness.checkpoint_step:,}"
+    description = (
+        f"Stage: {harness.training_stage.upper()} · Checkpoint: {harness.checkpoint_path} · "
+        f"step {harness.checkpoint_step:,}"
+    )
     if harness.validation_loss is not None:
         description += f" · assistant val loss {harness.validation_loss:.4f}"
     if harness.validation_ppl is not None:

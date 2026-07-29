@@ -23,5 +23,6 @@ scripts/
 scripts/data/prepare_minimind_sft.py  MiniMind 对话数据 ChatML 编码与 loss mask
 scripts/train/pretrain.py             next-token 预训练
 scripts/train/sft.py                  assistant-only loss 全参数监督微调
+scripts/train/dpo.py                  chosen/rejected 直接偏好优化
 scripts/inference/web_chat.py         SFT ChatML 多轮对话网页
 ```
