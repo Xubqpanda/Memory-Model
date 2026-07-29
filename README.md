@@ -16,6 +16,8 @@
 - AdamW、梯度累积、梯度裁剪、warmup + cosine 学习率
 - bf16、checkpoint 保存与恢复
 - Weights & Biases 在线实验跟踪与断点续写
+- ChatML SFT 数据编码与 assistant-only loss mask
+- 从预训练 checkpoint 初始化的双卡 DDP 全参数 SFT
 - toy 数据和 TinyStories 数据准备
 - 约 20M、60M 和 125M 参数的实验配置
 
@@ -286,6 +288,65 @@ TinyStories 20M 用于验证英文预训练闭环。中文预训练使用下一�
       scripts/train/pretrain.py \
       --config configs/minimind_pretrain_60m.py \
       --resume checkpoints/minimind_pretrain_60m/latest.pt
+
+## 5. MiniMind SFT
+
+SFT 保留完整的 system/user/assistant/tool 上下文，但只对 assistant 正文及其
+`<|im_end|>` 结束标记计算交叉熵。数据中的其他 token 会被转换成 `-100` 标签，
+因此仍参与前向传播，却不会成为直接的预测目标。
+
+先把 905,718 条 `sft_t2t_mini.jsonl` 对话编码成定长 token 和 loss-mask 文件：
+
+```bash
+/mnt/8t/xubuqiang/anaconda3/bin/python \
+  scripts/data/prepare_minimind_sft.py \
+  --input data/minimind/raw/sft_t2t_mini.jsonl \
+  --out-dir data/minimind/sft_mini \
+  --block-size 768 \
+  --validation-ratio 0.01 \
+  --batch-size 512
+```
+
+默认保留数据集已有的 `reasoning_content`，并按 MiniMind 的训练分布为 20% 的普通
+回答保留空 `<think>` 标签。如果只训练直接回答，可以在编码时增加
+`--exclude-reasoning --empty-think-ratio 0`。这一选择会写入 `meta.json`，便于实验追踪。
+
+双卡正式 SFT：
+
+```bash
+unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
+
+CUDA_VISIBLE_DEVICES=0,1 \
+/mnt/8t/xubuqiang/anaconda3/bin/python \
+  -m torch.distributed.run \
+  --standalone \
+  --nproc_per_node=2 \
+  scripts/train/sft.py \
+  --config configs/minimind_sft_60m.py
+```
+
+默认配置从下面的预训练权重初始化，而不是重新随机初始化：
+
+```text
+checkpoints/minimind_pretrain_full_60m/best.pt
+```
+
+训练 2 个 epoch，每个 epoch 保存一个 checkpoint；同时维护 `latest.pt` 和验证集
+assistant loss 最低的 `best.pt`。终端、`logs/` 和 W&B 都会记录 loss、验证 loss、
+梯度范数、学习率、显存、input-token 吞吐和 supervised-token 吞吐。
+
+中断后恢复时使用 SFT checkpoint：
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1 \
+/mnt/8t/xubuqiang/anaconda3/bin/python \
+  -m torch.distributed.run \
+  --standalone \
+  --nproc_per_node=2 \
+  scripts/train/sft.py \
+  --config configs/minimind_sft_60m.py \
+  --resume checkpoints/minimind_sft_60m/latest.pt
+```
 
 训练完成后生成中文：
 

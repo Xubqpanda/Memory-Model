@@ -29,6 +29,11 @@ class DistributedContext:
             tensor /= self.world_size
         return tensor
 
+    def sum(self, tensor: torch.Tensor) -> torch.Tensor:
+        if self.enabled:
+            dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
+        return tensor
+
     def close(self) -> None:
         if self.enabled and dist.is_initialized():
             dist.destroy_process_group()

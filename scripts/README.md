@@ -13,6 +13,14 @@ scripts/
 
 - 文件名使用小写 `snake_case`。
 - 使用动词描述操作，例如 `prepare_tinystories.py` 和 `generate.py`。
-- 训练入口用训练阶段命名，例如 `pretrain.py`；未来可加入 `finetune.py`。
+- 训练入口用训练阶段命名，例如 `pretrain.py` 和 `sft.py`。
 - 可复用的模型、数据与生成逻辑放在 `src/`，`scripts/` 只负责解析参数和组织运行流程。
 - 相对路径统一相对于项目根目录解析，避免因当前工作目录不同而改变行为。
+
+当前训练阶段入口：
+
+```text
+scripts/data/prepare_minimind_sft.py  MiniMind 对话数据 ChatML 编码与 loss mask
+scripts/train/pretrain.py             next-token 预训练
+scripts/train/sft.py                  assistant-only loss 全参数监督微调
+```

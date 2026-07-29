@@ -1,6 +1,141 @@
 from __future__ import annotations
 
+import json
 from typing import Any
+
+
+IM_START = "<|im_start|>"
+IM_END = "<|im_end|>"
+
+
+def _json_value(value: Any) -> Any:
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value
+    return value
+
+
+def _render_tools_system_message(message: dict[str, Any]) -> str:
+    content = str(message.get("content") or "").strip()
+    tools = _json_value(message.get("tools"))
+    tool_lines = []
+    if isinstance(tools, list):
+        tool_lines = [json.dumps(tool, ensure_ascii=False, separators=(",", ":")) for tool in tools]
+
+    prefix = f"{content}\n\n" if content else ""
+    return (
+        prefix
+        + "# Tools\n\n"
+        + "You may call one or more functions to assist with the user query.\n\n"
+        + "You are provided with function signatures within <tools></tools> XML tags:\n"
+        + "<tools>"
+        + "".join(f"\n{line}" for line in tool_lines)
+        + "\n</tools>\n\n"
+        + "For each function call, return a json object with function name and arguments "
+        + "within <tool_call></tool_call> XML tags:\n"
+        + "<tool_call>\n"
+        + '{"name": <function-name>, "arguments": <args-json-object>}\n'
+        + "</tool_call>"
+    )
+
+
+def _render_tool_calls(value: Any) -> str:
+    calls = _json_value(value)
+    if not isinstance(calls, list):
+        return ""
+
+    rendered = []
+    for call in calls:
+        if not isinstance(call, dict):
+            continue
+        function = call.get("function", call)
+        if not isinstance(function, dict) or not function.get("name"):
+            continue
+        arguments = function.get("arguments", {})
+        if not isinstance(arguments, str):
+            arguments = json.dumps(arguments, ensure_ascii=False, separators=(",", ":"))
+        payload = f'{{"name": "{function["name"]}", "arguments": {arguments}}}'
+        rendered.append(f"<tool_call>\n{payload}\n</tool_call>")
+    return "\n".join(rendered)
+
+
+def render_chatml_segments(
+    conversations: list[dict[str, Any]],
+    *,
+    include_reasoning: bool = True,
+    include_empty_think: bool = False,
+) -> list[tuple[str, bool]]:
+    """Render MiniMind/Qwen-style ChatML as ``(text, supervised)`` segments.
+
+    Only assistant bodies and their closing ``<|im_end|>`` markers are
+    supervised. Role headers and all context messages remain visible to the
+    model but receive no direct language-model loss.
+    """
+
+    segments: list[tuple[str, bool]] = []
+    for message in conversations:
+        if not isinstance(message, dict):
+            continue
+        role = str(message.get("role") or "").strip()
+        content = str(message.get("content") or "")
+
+        if role == "assistant":
+            segments.append((f"{IM_START}assistant\n", False))
+            body_parts = []
+            reasoning = str(message.get("reasoning_content") or "").strip("\n")
+            if include_reasoning and reasoning:
+                body_parts.append(f"<think>\n{reasoning}\n</think>\n\n")
+            elif include_empty_think:
+                body_parts.append("<think>\n\n</think>\n\n")
+            if content:
+                body_parts.append(content.lstrip("\n"))
+            tool_calls = _render_tool_calls(message.get("tool_calls"))
+            if tool_calls:
+                if body_parts and not body_parts[-1].endswith("\n"):
+                    body_parts.append("\n")
+                body_parts.append(tool_calls)
+            body_parts.append(f"{IM_END}\n")
+            segments.append(("".join(body_parts), True))
+            continue
+
+        if role == "tool":
+            text = (
+                f"{IM_START}user\n<tool_response>\n"
+                f"{content}\n</tool_response>{IM_END}\n"
+            )
+            segments.append((text, False))
+            continue
+
+        if role in {"system", "user"}:
+            if role == "system" and message.get("tools"):
+                content = _render_tools_system_message(message)
+            segments.append((f"{IM_START}{role}\n{content}{IM_END}\n", False))
+
+    return segments
+
+
+def encode_chatml_supervision(
+    tokenizer: Any,
+    conversations: list[dict[str, Any]],
+    *,
+    include_reasoning: bool = True,
+    include_empty_think: bool = False,
+) -> tuple[list[int], list[int]]:
+    """Tokenize ChatML and return token-aligned assistant loss indicators."""
+
+    token_ids: list[int] = []
+    loss_mask: list[int] = []
+    for text, supervised in render_chatml_segments(
+        conversations,
+        include_reasoning=include_reasoning,
+        include_empty_think=include_empty_think,
+    ):
+        segment_ids = tokenizer.encode(text)
+        token_ids.extend(segment_ids)
+        loss_mask.extend([int(supervised)] * len(segment_ids))
+    return token_ids, loss_mask
 
 
 def render_conversation(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -30,4 +31,64 @@ class BinaryTokenDataset:
         return (
             x.pin_memory().to(device, non_blocking=pin),
             y.pin_memory().to(device, non_blocking=pin),
+        )
+
+
+class SupervisedBinaryDataset:
+    """Fixed-length SFT examples with a token-aligned assistant loss mask."""
+
+    def __init__(self, data_dir: str | Path) -> None:
+        self.data_dir = Path(data_dir)
+        self.metadata = json.loads((self.data_dir / "meta.json").read_text(encoding="utf-8"))
+        self.sequence_length = int(self.metadata["sequence_length"])
+        self.block_size = self.sequence_length - 1
+        self._tokens: dict[str, np.memmap] = {}
+        self._masks: dict[str, np.memmap] = {}
+        self._example_counts: dict[str, int] = {}
+
+        for split in ("train", "val"):
+            count = int(self.metadata[f"{split}_examples"])
+            self._example_counts[split] = count
+            self._tokens[split] = np.memmap(
+                self.data_dir / f"{split}_tokens.bin",
+                dtype=np.uint16,
+                mode="r",
+                shape=(count, self.sequence_length),
+            )
+            self._masks[split] = np.memmap(
+                self.data_dir / f"{split}_loss_mask.bin",
+                dtype=np.uint8,
+                mode="r",
+                shape=(count, self.sequence_length),
+            )
+
+    def num_examples(self, split: str) -> int:
+        return self._example_counts[split]
+
+    def get_batch(
+        self,
+        split: str,
+        indices: np.ndarray | torch.Tensor | list[int],
+        device: torch.device,
+    ) -> tuple[torch.Tensor, torch.Tensor, int]:
+        if isinstance(indices, torch.Tensor):
+            indices = indices.detach().cpu().numpy()
+        indices = np.asarray(indices, dtype=np.int64)
+        rows = np.asarray(self._tokens[split][indices], dtype=np.int64)
+        masks = np.asarray(self._masks[split][indices], dtype=np.bool_)
+
+        x = torch.from_numpy(rows[:, :-1].copy())
+        y = torch.from_numpy(rows[:, 1:].copy())
+        target_mask = torch.from_numpy(masks[:, 1:].copy())
+        y.masked_fill_(~target_mask, -100)
+        supervised_tokens = int(target_mask.sum().item())
+
+        pin = device.type == "cuda"
+        if pin:
+            x = x.pin_memory()
+            y = y.pin_memory()
+        return (
+            x.to(device, non_blocking=pin),
+            y.to(device, non_blocking=pin),
+            supervised_tokens,
         )

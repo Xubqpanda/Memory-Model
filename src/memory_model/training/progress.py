@@ -31,7 +31,14 @@ def create_local_run_dir(
 class TrainingLogger:
     """Terminal progress plus durable local text and JSONL logs."""
 
-    def __init__(self, run_dir: Path, total_steps: int, start_step: int, enable_tqdm: bool = True) -> None:
+    def __init__(
+        self,
+        run_dir: Path,
+        total_steps: int,
+        start_step: int,
+        enable_tqdm: bool = True,
+        description: str = "pretrain",
+    ) -> None:
         self.run_dir = run_dir
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.console_path = self.run_dir / "train.log"
@@ -41,7 +48,7 @@ class TrainingLogger:
         self.progress = tqdm(
             total=total_steps,
             initial=start_step,
-            desc="pretrain",
+            desc=description,
             unit="step",
             dynamic_ncols=True,
             smoothing=0.05,
