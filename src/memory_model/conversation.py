@@ -61,3 +61,29 @@ def clean_assistant_reply(text: str) -> str:
         if marker in reply:
             reply = reply.split(marker, 1)[0].rstrip()
     return reply
+
+
+def append_continuation_text(context: str, new_text: str) -> str:
+    """Append user-provided raw text without injecting role or system labels."""
+    context = context.rstrip()
+    new_text = new_text.strip()
+    if not context:
+        return new_text
+    if not new_text:
+        return context
+    return f"{context}\n{new_text}"
+
+
+def fit_raw_context_ids(
+    tokenizer: Any,
+    text: str,
+    block_size: int,
+    max_new_tokens: int,
+) -> tuple[list[int], int]:
+    """Keep the newest raw tokens while reserving room for continuation."""
+    if not 0 < max_new_tokens < block_size:
+        raise ValueError("max_new_tokens must be between 1 and block_size - 1")
+    prompt_budget = block_size - max_new_tokens
+    input_ids = tokenizer.encode(text)
+    dropped_tokens = max(0, len(input_ids) - prompt_budget)
+    return input_ids[-prompt_budget:], dropped_tokens

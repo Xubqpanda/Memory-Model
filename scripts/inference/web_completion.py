@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Minimal Gradio chat harness for a pretrained Memory-Model checkpoint."""
+"""Raw-text Gradio completion playground for a pretrained checkpoint."""
 
 from __future__ import annotations
 
@@ -16,12 +16,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from memory_model import ModelConfig
-from memory_model.conversation import build_context_ids, clean_assistant_reply
+from memory_model.conversation import append_continuation_text, fit_raw_context_ids
 from memory_model.models.vanilla_transformer import TransformerLM
 from memory_model.tokenizer import get_tokenizer
 
 
-class ChatHarness:
+class CompletionHarness:
     def __init__(self, checkpoint_path: Path, device: torch.device) -> None:
         checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
         self.config = ModelConfig(**checkpoint["model_config"])
@@ -39,30 +39,28 @@ class ChatHarness:
             else nullcontext
         )
 
-    def respond(
+    def continue_text(
         self,
-        message: str,
-        history: list[dict[str, str]] | None,
-        system_prompt: str,
+        added_text: str,
+        context: str | None,
         max_new_tokens: int,
         temperature: float,
         top_k: int,
         top_p: float,
         greedy: bool,
     ):
-        message = message.strip()
-        history = list(history or [])
-        if not message:
-            return history, history, "", "请输入消息。"
+        context = context or ""
+        raw_prompt = append_continuation_text(context, added_text)
+        if not raw_prompt:
+            return context, context, "", "请先输入一段开头。"
 
-        input_ids, dropped_messages = build_context_ids(
+        input_ids, dropped_tokens = fit_raw_context_ids(
             self.tokenizer,
-            history,
-            message,
-            system_prompt,
+            raw_prompt,
             self.config.block_size,
             int(max_new_tokens),
         )
+        retained_prompt = self.tokenizer.decode(input_ids)
         tensor = torch.tensor([input_ids], dtype=torch.long, device=self.device)
         with self.amp_context():
             output = self.model.generate(
@@ -84,84 +82,82 @@ class ChatHarness:
         )
         if ended_with_eos:
             generated_ids.pop()
-        reply = clean_assistant_reply(self.tokenizer.decode(generated_ids))
-        if not reply:
-            reply = "（模型没有生成有效文本，请尝试提高温度或修改问题。）"
-
-        updated_history = [
-            *history,
-            {"role": "user", "content": message},
-            {"role": "assistant", "content": reply},
-        ]
+        continuation = self.tokenizer.decode(generated_ids)
+        updated_context = retained_prompt + continuation
         status = (
-            f"上下文 {len(input_ids)}/{self.config.block_size} tokens · "
-            f"生成 {len(generated_ids)} tokens · "
+            f"输入上下文 {len(input_ids)}/{self.config.block_size} tokens · "
+            f"续写 {len(generated_ids)} tokens · "
             f"{'EOS 停止' if ended_with_eos else '达到生成上限'}"
         )
-        if dropped_messages:
-            status += f" · 已裁剪最早 {dropped_messages // 2} 轮"
-        return updated_history, updated_history, "", status
+        if dropped_tokens:
+            status += f" · 已从最前面裁剪 {dropped_tokens} tokens"
+        return updated_context, updated_context, "", status
 
 
-def build_demo(harness: ChatHarness) -> gr.Blocks:
+def build_demo(harness: CompletionHarness) -> gr.Blocks:
     description = f"Checkpoint: {harness.checkpoint_path} · step {harness.checkpoint_step:,}"
     if harness.validation_loss is not None:
         description += f" · val loss {harness.validation_loss:.4f}"
 
-    with gr.Blocks(title="Memory-Model Chat") as demo:
-        gr.Markdown("# Memory-Model 简单对话")
+    with gr.Blocks(title="Memory-Model Completion") as demo:
+        gr.Markdown("# Memory-Model 预训练续写测试")
         gr.Markdown(
             description
-            + "\n\n这是纯预训练模型的最小对话 harness：每轮回复会追加到下一轮上下文中，"
-            "尚未经过 SFT，因此角色遵循和回答质量可能不稳定。"
+            + "\n\n页面不会注入 user、assistant 或 system role。模型只看到下方累计的原始文本，"
+            "每次生成结果都会原样追加到上下文。"
         )
-        chatbot = gr.Chatbot(
-            label="对话",
-            height=560,
-            layout="bubble",
-            placeholder="输入一条消息，测试预训练模型的续写和简单对话能力。",
+        context_display = gr.Textbox(
+            label="累计原文与模型续写",
+            lines=24,
+            interactive=False,
+            placeholder="累计文本会显示在这里。",
         )
-        history_state = gr.State([])
+        context_state = gr.State("")
+        added_text = gr.Textbox(
+            label="追加文本",
+            placeholder="输入一个开头，例如：人工智能的发展历史可以追溯到",
+            lines=4,
+        )
         with gr.Row():
-            message = gr.Textbox(
-                label="消息",
-                placeholder="例如：请介绍一下人工智能的发展历史。",
-                lines=2,
-                scale=8,
-            )
-            send = gr.Button("发送", variant="primary", scale=1)
-        with gr.Row():
-            clear = gr.Button("清空上下文")
-            status = gr.Markdown("等待输入。")
+            generate = gr.Button("追加并续写", variant="primary")
+            continue_button = gr.Button("继续续写（无需追加文本）")
+            clear = gr.Button("清空")
+        status = gr.Markdown("等待输入。")
 
         with gr.Accordion("生成参数", open=False):
-            system_prompt = gr.Textbox(
-                label="上下文前缀",
-                value="以下是用户和助手之间的一段对话。助手会尽量准确、简洁地回答用户。",
-                lines=2,
-            )
             max_new_tokens = gr.Slider(16, 256, value=128, step=8, label="最大生成 tokens")
             temperature = gr.Slider(0.1, 1.5, value=0.8, step=0.05, label="Temperature")
             top_k = gr.Slider(0, 200, value=50, step=1, label="Top-k（0 表示关闭）")
             top_p = gr.Slider(0.1, 1.0, value=0.95, step=0.01, label="Top-p")
             greedy = gr.Checkbox(value=False, label="Greedy decoding")
 
-        inputs = [
-            message,
-            history_state,
-            system_prompt,
+        common_inputs = [
+            context_state,
             max_new_tokens,
             temperature,
             top_k,
             top_p,
             greedy,
         ]
-        outputs = [chatbot, history_state, message, status]
-        send.click(harness.respond, inputs=inputs, outputs=outputs)
-        message.submit(harness.respond, inputs=inputs, outputs=outputs)
+        outputs = [context_display, context_state, added_text, status]
+        generate.click(
+            harness.continue_text,
+            inputs=[added_text, *common_inputs],
+            outputs=outputs,
+        )
+        added_text.submit(
+            harness.continue_text,
+            inputs=[added_text, *common_inputs],
+            outputs=outputs,
+        )
+        continue_button.click(
+            harness.continue_text,
+            inputs=[gr.State(""), *common_inputs],
+            outputs=outputs,
+        )
         clear.click(
-            lambda: ([], [], "", "会话已清空。"),
-            outputs=[chatbot, history_state, message, status],
+            lambda: ("", "", "", "上下文已清空。"),
+            outputs=outputs,
             queue=False,
         )
     return demo
@@ -185,7 +181,7 @@ def main() -> None:
         checkpoint_path = PROJECT_ROOT / checkpoint_path
     device = torch.device(args.device)
     print(f"Loading {checkpoint_path} on {device}...")
-    harness = ChatHarness(checkpoint_path, device)
+    harness = CompletionHarness(checkpoint_path, device)
     demo = build_demo(harness)
     demo.queue(default_concurrency_limit=1).launch(
         server_name=args.server_name,

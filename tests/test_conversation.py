@@ -1,6 +1,8 @@
 from memory_model.conversation import (
+    append_continuation_text,
     build_context_ids,
     clean_assistant_reply,
+    fit_raw_context_ids,
     render_conversation,
 )
 
@@ -40,3 +42,21 @@ def test_context_drops_oldest_complete_turns():
 
 def test_clean_reply_stops_before_next_user_turn():
     assert clean_assistant_reply("第一段回答\n用户：下一个问题") == "第一段回答"
+
+
+def test_raw_continuation_does_not_inject_roles():
+    context = append_continuation_text("人工智能的发展", "可以追溯到")
+    assert context == "人工智能的发展\n可以追溯到"
+    assert "用户：" not in context
+    assert "助手：" not in context
+
+
+def test_raw_context_keeps_latest_tokens():
+    ids, dropped = fit_raw_context_ids(
+        CharacterTokenizer(),
+        "abcdefghijklmnopqrstuvwxyz",
+        block_size=20,
+        max_new_tokens=5,
+    )
+    assert len(ids) == 15
+    assert dropped == 11
