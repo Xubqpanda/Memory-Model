@@ -299,6 +299,18 @@ TinyStories 20M 用于验证英文预训练闭环。中文预训练使用下一�
       --top-p 0.95 \
       --device cuda:0
 
+启动最小多轮对话网页：
+
+    CUDA_VISIBLE_DEVICES=0 \
+    /mnt/8t/xubuqiang/anaconda3/bin/python \
+      scripts/inference/web_chat.py \
+      --checkpoint checkpoints/minimind_pretrain_full_60m/best.pt \
+      --device cuda:0 \
+      --server-name 0.0.0.0 \
+      --port 7860
+
+浏览器打开 http://127.0.0.1:7860。该 harness 使用“用户：/助手：”纯文本格式，每轮把模型回复追加到下一轮上下文；超过 768 token 时优先删除最早的完整对话轮次。纯预训练模型尚未经过 SFT，因此它可能续写额外角色、偏离问题或表现出不稳定的助手行为。
+
 ### MiniMind 完整预训练集
 
 完整 pretrain_t2t 数据编码命令：

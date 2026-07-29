@@ -19,6 +19,7 @@ dependencies = [
 data = ["datasets>=2.14"]
 dev = ["pytest>=7"]
 tracking = ["wandb>=0.17"]
+web = ["gradio>=6.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
