@@ -348,6 +348,20 @@ CUDA_VISIBLE_DEVICES=0,1 \
   --resume checkpoints/minimind_sft_60m/latest.pt
 ```
 
+SFT 完成后启动 ChatML 多轮对话网页：
+
+```bash
+CUDA_VISIBLE_DEVICES=1 \
+python scripts/inference/web_chat.py \
+  --checkpoint checkpoints/minimind_sft_60m/best.pt \
+  --device cuda:0 \
+  --server-name 0.0.0.0 \
+  --port 7861
+```
+
+这里的 `cuda:0` 指 `CUDA_VISIBLE_DEVICES=1` 映射后的第一张可见 GPU，也就是物理 GPU 1。
+网页会保留多轮 user/assistant 历史，并在超出 768-token 上下文前按完整轮次丢弃最早消息。
+
 训练完成后生成中文：
 
     /mnt/8t/xubuqiang/anaconda3/bin/python \

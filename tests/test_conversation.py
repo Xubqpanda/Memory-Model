@@ -1,10 +1,13 @@
 from memory_model.conversation import (
     append_continuation_text,
+    build_chatml_context_ids,
     build_context_ids,
+    clean_chatml_reply,
     clean_assistant_reply,
     encode_chatml_supervision,
     fit_raw_context_ids,
     render_chatml_segments,
+    render_chatml_prompt,
     render_conversation,
 )
 
@@ -109,3 +112,44 @@ def test_chatml_can_include_reasoning_and_tool_calls():
     assistant_body = segments[1][0]
     assert "<think>\n先调用工具\n</think>" in assistant_body
     assert '<tool_call>\n{"name": "search", "arguments": {"q":1}}\n</tool_call>' in assistant_body
+
+
+def test_chatml_inference_prompt_matches_sft_boundaries():
+    prompt = render_chatml_prompt(
+        [
+            {"role": "system", "content": "提供帮助"},
+            {"role": "user", "content": "你好"},
+            {"role": "assistant", "content": "你好！"},
+            {"role": "user", "content": "你是谁？"},
+        ],
+        add_generation_prompt=True,
+    )
+    assert prompt.endswith(
+        "<|im_start|>user\n你是谁？<|im_end|>\n"
+        "<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    )
+    assert prompt.count("<|im_start|>") == 5
+
+
+def test_chatml_context_drops_oldest_complete_turns():
+    history = [
+        {"role": "user", "content": "很早的问题"},
+        {"role": "assistant", "content": "很早的回答"},
+        {"role": "user", "content": "较新的问题"},
+        {"role": "assistant", "content": "较新的回答"},
+    ]
+    ids, dropped = build_chatml_context_ids(
+        Utf8ByteTokenizer(),
+        history,
+        "当前问题",
+        "",
+        block_size=180,
+        max_new_tokens=30,
+    )
+    assert len(ids) <= 150
+    assert dropped >= 2
+
+
+def test_clean_chatml_reply_stops_before_extra_turn_and_restores_think_prefix():
+    assert clean_chatml_reply("回答<|im_start|>user\n下一问") == "回答"
+    assert clean_chatml_reply("推理\n</think>\n答案", open_thinking=True).startswith("<think>\n推理")

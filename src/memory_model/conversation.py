@@ -138,6 +138,97 @@ def encode_chatml_supervision(
     return token_ids, loss_mask
 
 
+def render_chatml_prompt(
+    messages: list[dict[str, Any]],
+    *,
+    add_generation_prompt: bool = False,
+    open_thinking: bool = False,
+) -> str:
+    """Render inference messages with the same ChatML boundaries used by SFT."""
+
+    prompt = "".join(
+        text
+        for text, _ in render_chatml_segments(
+            messages,
+            include_reasoning=False,
+            include_empty_think=False,
+        )
+    )
+    if add_generation_prompt:
+        prompt += f"{IM_START}assistant\n"
+        if open_thinking:
+            prompt += "<think>\n"
+        else:
+            # MiniMind's inference template explicitly closes an empty thinking
+            # block to request a direct answer. Without this cue, an SFT model
+            # may start a long reasoning trace even in normal chat mode.
+            prompt += "<think>\n\n</think>\n\n"
+    return prompt
+
+
+def build_chatml_context_ids(
+    tokenizer: Any,
+    history: list[dict[str, Any]],
+    user_message: str,
+    system_prompt: str,
+    block_size: int,
+    max_new_tokens: int,
+    *,
+    open_thinking: bool = False,
+) -> tuple[list[int], int]:
+    """Fit ChatML into context by removing the oldest complete user/assistant turns."""
+
+    if not 0 < max_new_tokens < block_size:
+        raise ValueError("max_new_tokens must be between 1 and block_size - 1")
+    prompt_budget = block_size - max_new_tokens
+    retained = [
+        {"role": message.get("role"), "content": str(message.get("content") or "")}
+        for message in history
+        if message.get("role") in {"user", "assistant"} and str(message.get("content") or "").strip()
+    ]
+    retained.append({"role": "user", "content": user_message.strip()})
+    dropped_messages = 0
+
+    while True:
+        messages: list[dict[str, Any]] = []
+        if system_prompt.strip():
+            messages.append({"role": "system", "content": system_prompt.strip()})
+        messages.extend(retained)
+        prompt = render_chatml_prompt(
+            messages,
+            add_generation_prompt=True,
+            open_thinking=open_thinking,
+        )
+        input_ids = tokenizer.encode(prompt)
+        if len(input_ids) <= prompt_budget:
+            return input_ids, dropped_messages
+
+        # Keep the current user message, dropping one oldest complete turn.
+        if len(retained) > 1:
+            drop_count = 2 if len(retained) >= 3 and retained[1].get("role") == "assistant" else 1
+            retained = retained[drop_count:]
+            dropped_messages += drop_count
+            continue
+
+        # A single user/system message can itself exceed the budget. Keeping the
+        # newest tokens is a last resort, but generation can still proceed.
+        return input_ids[-prompt_budget:], dropped_messages
+
+
+def clean_chatml_reply(text: str, *, open_thinking: bool = False) -> str:
+    """Remove accidental extra turns while preserving optional thinking markup."""
+
+    reply = text
+    if IM_END in reply:
+        reply = reply.split(IM_END, 1)[0]
+    if IM_START in reply:
+        reply = reply.split(IM_START, 1)[0]
+    reply = reply.strip()
+    if open_thinking:
+        reply = "<think>\n" + reply
+    return reply
+
+
 def render_conversation(
     history: list[dict[str, str]],
     user_message: str,
