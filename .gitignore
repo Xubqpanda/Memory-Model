@@ -17,3 +17,4 @@ checkpoints/**/*.pt
 checkpoints/**/wandb/
 wandb/
 logs/
+evals/results/

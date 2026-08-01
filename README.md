@@ -415,6 +415,43 @@ python scripts/inference/web_chat.py \
   --port 7862
 ```
 
+## 7. 固定评测
+
+永久保留的行为评测集位于：
+
+```text
+evals/data/fixed_chat_eval.jsonl
+```
+
+它包含 100 条不参与任何训练的测试样本，覆盖数学、知识、指令遵循、概念解释、摘要、多轮、
+重复压力和 EOS/角色边界。使用相同解码设置比较 SFT 与 DPO：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 \
+python scripts/eval/compare_checkpoints.py \
+  --checkpoint sft=checkpoints/minimind_sft_60m/best.pt \
+  --checkpoint dpo=checkpoints/minimind_dpo_60m/best.pt \
+  --greedy
+```
+
+结果写入 `evals/results/`，包括每条回答和汇总指标：
+
+- 自动检查正确率；
+- EOS Stop Rate；
+- Role Leakage；
+- 平均长度；
+- Distinct-1/2/3 和重复率；
+- 按类别统计。
+
+`agent_rl_math.jsonl` 在开始 GRPO 前通过固定 seed 切分为 18,000/1,000/1,000：
+
+```bash
+python scripts/data/split_agent_rl_math.py
+```
+
+最终 `test.jsonl` 位于 `evals/data/agent_rl_math_split/`，被目录级 `.gitignore` 忽略，
+只能在本地用于最终测试，不能用于训练或调参。切分 manifest 保存了 seed 和原始文件 SHA256。
+
 训练完成后生成中文：
 
     /mnt/8t/xubuqiang/anaconda3/bin/python \
