@@ -6,7 +6,14 @@ from ...config import ModelConfig
 
 
 class FeedForward(nn.Module):
-    """Position-wise GELU feed-forward network."""
+    """Position-wise feed-forward network using GELU.
+
+    References:
+        Vaswani et al., "Attention Is All You Need" (position-wise FFN, 2017).
+        https://arxiv.org/abs/1706.03762
+        Hendrycks and Gimpel, "Gaussian Error Linear Units (GELUs)" (2016).
+        https://arxiv.org/abs/1606.08415
+    """
 
     def __init__(self, config: ModelConfig) -> None:
         super().__init__()

@@ -1,7 +1,7 @@
 import torch
 
 from memory_model import ModelConfig
-from memory_model.models.vanilla_transformer import (
+from memory_model.models import (
     LanguageModelHead,
     ResidualConnection,
     TransformerLM,

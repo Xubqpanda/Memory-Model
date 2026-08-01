@@ -1,7 +1,7 @@
 import torch
 
 from memory_model import ModelConfig
-from memory_model.models.vanilla_transformer import TransformerLM
+from memory_model.models import TransformerLM
 
 
 def test_future_tokens_cannot_change_past_logits():

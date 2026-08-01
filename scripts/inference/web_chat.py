@@ -19,7 +19,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from memory_model import ModelConfig
 from memory_model.conversation import build_chatml_context_ids, clean_chatml_reply
-from memory_model.models.vanilla_transformer import TransformerLM
+from memory_model.models import TransformerLM
 from memory_model.tokenizer import get_tokenizer
 
 

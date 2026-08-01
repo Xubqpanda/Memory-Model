@@ -22,7 +22,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from memory_model import ModelConfig
 from memory_model.data import SupervisedBinaryDataset
-from memory_model.models.vanilla_transformer import TransformerLM
+from memory_model.models import TransformerLM
 from memory_model.training import TrainingLogger, create_local_run_dir, initialize_distributed
 
 
@@ -278,7 +278,7 @@ def main() -> None:
         init_path = resolve_path(train_config["init_from"])
         initial = torch.load(init_path, map_location="cpu", weights_only=False)
         checkpoint_config = initial.get("model_config")
-        if checkpoint_config is not None and checkpoint_config != model_config.to_dict():
+        if checkpoint_config is not None and not model_config.matches(checkpoint_config):
             raise ValueError("pretraining checkpoint architecture does not match SFT config")
         model.load_state_dict(initial["model"])
         del initial

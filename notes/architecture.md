@@ -1,31 +1,31 @@
-# `vanilla_transformer/` 架构详解：从 token 到下一个 token
+# 可组合 Transformer 架构详解：从 token 到下一个 token
 
 本文对应项目中的模型实现：
 
-- [`src/memory_model/models/vanilla_transformer/`](../src/memory_model/models/vanilla_transformer/)
+- [`src/memory_model/models/`](../src/memory_model/models/)
 - [`src/memory_model/config.py`](../src/memory_model/config.py)
 
-`vanilla_transformer/` 是当前项目的标准 Transformer 基线架构包。它规定了模型内部有哪些层、数据如何流过这些层，以及训练和推理时模型返回什么。我们将组件拆成独立文件，是为了后续能够单独替换 Attention、FFN、Norm、Residual、Embedding 或输出头并进行消融实验，也为未来的 `memory_transformer/` 保留清楚的对照边界。
+`models/` 按研究组件组织模型实现。它规定模型内部有哪些层、数据如何流过这些层，以及训练和推理时模型返回什么。Attention、FFN、Norm、Residual、Embedding 和输出头分别位于独立子包中，从而可以单独替换并进行消融实验。
 
 ```text
-vanilla_transformer/
-├── attention.py    多头因果自注意力与 KV Cache
-├── ffn.py          Position-wise FFN
-├── embedding.py    Token 与位置 Embedding
-├── norm.py         归一化组件
-├── residual.py     残差连接策略
-├── block.py        组装一个 Transformer Block
-├── lm_head.py      语言模型输出头
-├── transformer.py  组装完整 Decoder-only Transformer
-├── types.py        KVCache 和 ModelOutput 类型
-└── __init__.py     统一导出公共接口
+models/
+├── attention/mha.py                         MHA 与 KV Cache
+├── embedding/token_embedding/learned.py    Token Embedding
+├── embedding/position_embedding/           Learned absolute 与 RoPE
+├── ffn/gelu.py                              Position-wise GELU FFN
+├── norm/layer_norm.py                       LayerNorm
+├── residual/standard.py                     标准残差连接
+├── block/transformer_block.py               Transformer Block
+├── lm_head/language_model_head.py           语言模型输出头
+├── transformer.py                           完整 Decoder-only Transformer
+└── types.py                                 KVCache 和 ModelOutput 类型
 ```
 
 但它并不负责完整训练流程。几个文件的职责分别是：
 
 | 文件 | 职责 |
 | --- | --- |
-| `src/memory_model/models/vanilla_transformer/` | 定义并组装标准基线的可替换模型组件 |
+| `src/memory_model/models/` | 定义并组装可替换的模型组件 |
 | `src/memory_model/config.py` | 定义层数、隐藏维度、头数等规模参数 |
 | `scripts/train/pretrain.py` | 读取数据、反向传播、更新参数、保存 checkpoint |
 | `scripts/inference/generate.py` | 加载 checkpoint 并调用模型生成文本 |
@@ -91,6 +91,9 @@ class ModelConfig:
     dropout: float = 0.0
     bias: bool = False
     tie_embeddings: bool = True
+    attention_type: str = "mha"
+    position_embedding_type: str = "learned_absolute"
+    rope_theta: float = 10_000.0
 ```
 
 各参数的含义是：
@@ -106,6 +109,9 @@ class ModelConfig:
 | `dropout` | 训练时随机丢弃部分激活值的概率 |
 | `bias` | Linear 和 LayerNorm 是否使用偏置参数 |
 | `tie_embeddings` | 输入 Embedding 与输出 LM Head 是否共享权重 |
+| `attention_type` | Attention 方法；当前支持 `mha` |
+| `position_embedding_type` | 位置方法：`learned_absolute` 或 `rope` |
+| `rope_theta` | RoPE 的频率基数 |
 
 必须满足：
 
@@ -155,7 +161,7 @@ input_ids = [
 
 ## 4. Token Embedding 与 Position Embedding
 
-完整模型在 `TransformerLM.__init__` 中创建两个 Embedding：
+默认的 learned absolute 配置在 `TransformerLM.__init__` 中创建两个 Embedding：
 
 ```python
 self.token_embedding = nn.Embedding(config.vocab_size, config.d_model)
@@ -193,7 +199,7 @@ $$
 E_{position}\in\mathbb{R}^{T_{max}\times d_{model}}
 $$
 
-当前项目使用 learned absolute position embedding，即每个绝对位置都有一个可训练向量。
+当前项目支持两种位置方法。默认的 learned absolute position embedding 为每个绝对位置学习一个向量：
 
 模型将两种向量直接相加：
 
@@ -222,6 +228,18 @@ d_model        = 128
 ```
 
 意思是 16 段文本，每段 64 个 token，每个 token 当前由一个 128 维向量表示。
+
+当配置为 `position_embedding_type="rope"` 时，模型不再创建上述位置参数矩阵，也不把位置向量加到 token embedding 上。RoPE 在每一个 Attention 层内部旋转 Query 和 Key，使注意力点积携带相对位置信息：
+
+$$
+q_t'=R_tq_t,\qquad k_s'=R_sk_s
+$$
+
+$$
+(q_t')^\top k_s'=q_t^\top R_{s-t}k_s
+$$
+
+因此 RoPE 表达的核心是相对位移 $s-t$。实现位于 `embedding/position_embedding/rope.py`，原论文为 Su et al., [RoFormer](https://arxiv.org/abs/2104.09864) (2021)。需要注意：当前 `block_size` 仍然限制一次可用上下文长度；加入 RoPE 本身不等于模型已经具备可靠的长度外推能力。
 
 ## 5. `CausalSelfAttention`
 
@@ -853,7 +871,7 @@ Decoder-only Transformer
 
 | 当前实现 | 后续可实验的实现 |
 | --- | --- |
-| Learned absolute position | RoPE |
+| Learned absolute position / RoPE | ALiBi、NoPE、长上下文 RoPE 扩展 |
 | LayerNorm | RMSNorm |
 | GELU FFN | SwiGLU |
 | Multi-Head Attention | GQA / MQA |
@@ -866,10 +884,10 @@ Decoder-only Transformer
 
 第一次阅读 `model/` 时，推荐按照下面的顺序，而不是机械地按文件名阅读：
 
-1. `block.py` 的 `TransformerBlock.forward`：先看一个 Block 的整体骨架；
-2. `attention.py` 的 `CausalSelfAttention.forward`：理解 token 之间如何交换信息；
-3. `ffn.py` 的 `FeedForward.forward`：理解单个 token 的非线性加工；
-4. `transformer.py` 的 `TransformerLM.__init__`：看完整模型如何堆叠；
+1. `block/transformer_block.py` 的 `TransformerBlock.forward`：先看一个 Block 的整体骨架；
+2. `attention/mha.py` 的 `MultiHeadCausalSelfAttention.forward`：理解 token 之间如何交换信息；
+3. `ffn/gelu.py` 的 `FeedForward.forward`：理解单个 token 的非线性加工；
+4. `models/transformer.py` 的 `TransformerLM.__init__`：看完整模型如何堆叠；
 5. `transformer.py` 的 `TransformerLM.forward`：串起 Embedding、Blocks、LM Head 和 Loss；
 6. `transformer.py` 的 `TransformerLM.generate`：理解自回归生成和 KV Cache。
 

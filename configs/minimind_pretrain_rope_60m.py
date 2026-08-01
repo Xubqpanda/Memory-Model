@@ -1,6 +1,6 @@
-# A 62M-parameter vanilla decoder-only Transformer for MiniMind pretraining.
-# This intentionally keeps our baseline architecture (MHA, GELU, LayerNorm,
-# learned absolute positions) instead of copying MiniMind-3's Qwen3-style model.
+# RoPE ablation counterpart of minimind_pretrain_60m.py.
+# It changes only the position method so results can be compared fairly with
+# the learned-absolute-position baseline.
 model = dict(
     vocab_size=6400,
     block_size=768,
@@ -10,19 +10,17 @@ model = dict(
     d_ff=3072,
     dropout=0.1,
     attention_type="mha",
-    position_embedding_type="learned_absolute",
+    position_embedding_type="rope",
+    rope_theta=10_000.0,
 )
 
 train = dict(
     data_dir="data/minimind/pretrain_mini",
     tokenizer="minimind",
-    out_dir="checkpoints/minimind_pretrain_60m",
-    # Per-GPU batch. The trainer preserves 196,608 global tokens/update:
-    # 1 GPU -> accumulation 2; 2 GPUs -> accumulation 1.
+    out_dir="checkpoints/minimind_pretrain_rope_60m",
     batch_size=128,
     gradient_accumulation_steps=2,
     target_tokens_per_step=196608,
-    # 6,400 × 196,608 ≈ 1.26B sampled tokens, about 20 tokens/parameter.
     max_steps=6400,
     eval_interval=200,
     eval_batches=30,
@@ -39,8 +37,8 @@ train = dict(
     wandb_mode="online",
     wandb_entity="Zjunlp-Xubqpanda",
     wandb_project="Memory-Model",
-    wandb_run_name="minimind-pretrain-mini-60m-vanilla",
-    wandb_tags=["baseline", "minimind", "pretrain", "60m", "vanilla-transformer"],
+    wandb_run_name="minimind-pretrain-mini-60m-rope",
+    wandb_tags=["ablation", "minimind", "pretrain", "60m", "mha", "rope"],
     wandb_init_timeout=30,
     wandb_fallback_offline=True,
 )

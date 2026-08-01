@@ -4,20 +4,27 @@ import torch
 import torch.nn as nn
 
 from ...config import ModelConfig
-from .attention import CausalSelfAttention
-from .ffn import FeedForward
-from .norm import TransformerLayerNorm
-from .residual import ResidualConnection
-from .types import KVCache
+from ..attention import build_attention
+from ..ffn import FeedForward
+from ..norm import TransformerLayerNorm
+from ..residual import ResidualConnection
+from ..types import KVCache
 
 
 class TransformerBlock(nn.Module):
-    """Pre-Norm block: x + Attention(LN(x)), then x + FFN(LN(x))."""
+    """Pre-Norm block: x + Attention(LN(x)), then x + FFN(LN(x)).
+
+    References:
+        Vaswani et al., "Attention Is All You Need" (Transformer, 2017).
+        https://arxiv.org/abs/1706.03762
+        Xiong et al., "On Layer Normalization in the Transformer Architecture"
+        (Pre-LN analysis, 2020). https://arxiv.org/abs/2002.04745
+    """
 
     def __init__(self, config: ModelConfig) -> None:
         super().__init__()
         self.attn_norm = TransformerLayerNorm(config)
-        self.attn = CausalSelfAttention(config)
+        self.attn = build_attention(config)
         self.attn_residual = ResidualConnection()
         self.ffn_norm = TransformerLayerNorm(config)
         self.ffn = FeedForward(config)

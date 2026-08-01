@@ -3,7 +3,7 @@ import math
 import torch
 
 from memory_model import ModelConfig
-from memory_model.models.vanilla_transformer import TransformerLM
+from memory_model.models import TransformerLM
 from memory_model.training import disable_model_dropout, dpo_loss, sequence_log_probs
 
 

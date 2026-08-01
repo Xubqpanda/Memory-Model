@@ -1,7 +1,7 @@
 import torch
 
 from memory_model import ModelConfig
-from memory_model.models.vanilla_transformer import TransformerLM
+from memory_model.models import TransformerLM
 
 
 def small_model() -> TransformerLM:
@@ -23,6 +23,24 @@ def test_forward_shape_and_backward():
 def test_weight_tying():
     model = small_model()
     assert model.token_embedding.weight.data_ptr() == model.lm_head.weight.data_ptr()
+
+
+def test_config_matches_checkpoint_created_before_position_options_existed():
+    current = ModelConfig(vocab_size=32, block_size=16, n_layer=2, n_head=2, d_model=16)
+    legacy = current.to_dict()
+    legacy.pop("attention_type")
+    legacy.pop("position_embedding_type")
+    legacy.pop("rope_theta")
+
+    assert current.matches(legacy)
+    assert not ModelConfig(
+        vocab_size=32,
+        block_size=16,
+        n_layer=2,
+        n_head=2,
+        d_model=16,
+        position_embedding_type="rope",
+    ).matches(legacy)
 
 
 def test_generation_stops_after_eos_token():

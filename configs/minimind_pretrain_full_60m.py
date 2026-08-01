@@ -9,6 +9,8 @@ model = dict(
     d_model=768,
     d_ff=3072,
     dropout=0.1,
+    attention_type="mha",
+    position_embedding_type="learned_absolute",
 )
 
 train = dict(

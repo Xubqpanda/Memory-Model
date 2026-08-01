@@ -6,7 +6,7 @@
 
 已经包含：
 
-- learned token/position embedding
+- learned token embedding，以及可切换的 learned absolute position / RoPE
 - causal multi-head self-attention
 - Pre-Norm、残差连接、GELU FFN
 - next-token cross-entropy loss
@@ -26,7 +26,7 @@
 ```text
 configs/                                      模型和训练超参数
 src/memory_model/                             项目级 Python 包
-src/memory_model/models/vanilla_transformer/ 标准 Transformer 基线组件
+src/memory_model/models/                    可组合的 Transformer 模型组件
 scripts/data/                                 数据下载与预处理入口
 scripts/train/                                训练入口
 scripts/inference/                            推理与生成入口
@@ -523,13 +523,14 @@ python scripts/data/split_agent_rl_math.py
 
 ## 阅读顺序
 
-1. `src/memory_model/models/vanilla_transformer/block.py` 的 `TransformerBlock`
-2. `src/memory_model/models/vanilla_transformer/attention.py` 的 `CausalSelfAttention`
-3. `src/memory_model/models/vanilla_transformer/transformer.py` 的 `TransformerLM.forward`
-4. `src/memory_model/models/vanilla_transformer/transformer.py` 的 `TransformerLM.generate`
+1. `src/memory_model/models/block/transformer_block.py` 的 `TransformerBlock`
+2. `src/memory_model/models/attention/mha.py` 的 `MultiHeadCausalSelfAttention`
+3. `src/memory_model/models/transformer.py` 的 `TransformerLM.forward`
+4. `src/memory_model/models/transformer.py` 的 `TransformerLM.generate`
 5. `scripts/train/pretrain.py`
 
 公式版结构说明见 [`notes/architecture.md`](notes/architecture.md)。
+组件目录、扩展位置和论文来源见 [`src/memory_model/models/README.md`](src/memory_model/models/README.md)。
 
 ## 研究路线
 

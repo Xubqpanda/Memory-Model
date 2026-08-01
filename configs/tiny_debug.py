@@ -6,6 +6,8 @@ model = dict(
     d_model=128,
     d_ff=512,
     dropout=0.0,
+    attention_type="mha",
+    position_embedding_type="learned_absolute",
 )
 
 train = dict(

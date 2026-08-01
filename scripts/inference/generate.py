@@ -9,7 +9,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from memory_model import ModelConfig
-from memory_model.models.vanilla_transformer import TransformerLM
+from memory_model.models import TransformerLM
 from memory_model.tokenizer import get_tokenizer
 
 

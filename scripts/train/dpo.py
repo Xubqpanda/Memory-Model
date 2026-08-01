@@ -21,7 +21,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from memory_model import ModelConfig
 from memory_model.data import PreferenceBinaryDataset
-from memory_model.models.vanilla_transformer import TransformerLM
+from memory_model.models import TransformerLM
 from memory_model.training import (
     TrainingLogger,
     create_local_run_dir,
@@ -333,7 +333,7 @@ def main() -> None:
     reference_model = TransformerLM(model_config).to(device)
     reference_path = resolve_path(train_config["reference_from"])
     reference_checkpoint = torch.load(reference_path, map_location="cpu", weights_only=False)
-    if reference_checkpoint.get("model_config") != model_config.to_dict():
+    if not model_config.matches(reference_checkpoint.get("model_config", {})):
         raise ValueError("reference checkpoint architecture does not match DPO config")
     reference_model.load_state_dict(reference_checkpoint["model"])
     del reference_checkpoint
@@ -355,7 +355,7 @@ def main() -> None:
         last_val_metrics = dict(checkpoint.get("val_metrics", last_val_metrics))
     else:
         initial = torch.load(resolve_path(train_config["init_from"]), map_location="cpu", weights_only=False)
-        if initial.get("model_config") != model_config.to_dict():
+        if not model_config.matches(initial.get("model_config", {})):
             raise ValueError("initial policy checkpoint architecture does not match DPO config")
         policy_model.load_state_dict(initial["model"])
         del initial

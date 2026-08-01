@@ -6,22 +6,24 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ...config import ModelConfig
+from ..config import ModelConfig
 from .block import TransformerBlock
-from .embedding import PositionEmbedding, TokenEmbedding
+from .embedding import TokenEmbedding, build_absolute_position_embedding
 from .lm_head import LanguageModelHead
 from .norm import TransformerLayerNorm
 from .types import KVCache, ModelOutput
 
 
 class TransformerLM(nn.Module):
-    """Decoder-only Transformer language model."""
+    """Configurable decoder-only Transformer language model."""
 
     def __init__(self, config: ModelConfig) -> None:
         super().__init__()
         self.config = config
         self.token_embedding = TokenEmbedding(config)
-        self.position_embedding = PositionEmbedding(config)
+        # Learned absolute positions live in the residual stream. RoPE instead
+        # lives inside each attention module, so this attribute is None for RoPE.
+        self.position_embedding = build_absolute_position_embedding(config)
         self.dropout = nn.Dropout(config.dropout)
         self.blocks = nn.ModuleList([TransformerBlock(config) for _ in range(config.n_layer)])
         self.final_norm = TransformerLayerNorm(config)
@@ -57,8 +59,11 @@ class TransformerLM(nn.Module):
             raise ValueError(
                 f"sequence length {past_len + seq_len} exceeds block_size={self.config.block_size}"
             )
-        positions = torch.arange(past_len, past_len + seq_len, device=input_ids.device)
-        x = self.token_embedding(input_ids) + self.position_embedding(positions)[None, :, :]
+
+        x = self.token_embedding(input_ids)
+        if self.position_embedding is not None:
+            positions = torch.arange(past_len, past_len + seq_len, device=input_ids.device)
+            x = x + self.position_embedding(positions)[None, :, :]
         x = self.dropout(x)
 
         new_caches: list[KVCache] | None = [] if use_cache else None
@@ -77,7 +82,7 @@ class TransformerLM(nn.Module):
 
     def num_parameters(self, non_embedding: bool = False) -> int:
         count = sum(parameter.numel() for parameter in self.parameters())
-        if non_embedding:
+        if non_embedding and self.position_embedding is not None:
             count -= self.position_embedding.weight.numel()
         return count
 
@@ -93,7 +98,7 @@ class TransformerLM(nn.Module):
         use_cache: bool = True,
         eos_token_id: int | None = None,
     ) -> torch.Tensor:
-        from ...generation import sample_next_token
+        from ..generation import sample_next_token
 
         if temperature < 0:
             raise ValueError("temperature must be non-negative")
@@ -106,8 +111,6 @@ class TransformerLM(nn.Module):
         finished = torch.zeros(input_ids.size(0), dtype=torch.bool, device=input_ids.device)
 
         for _ in range(max_new_tokens):
-            # Learned absolute positions cannot exceed block_size. If the context
-            # becomes too long, use the latest window and rebuild the cache.
             if use_cache and cache is not None and generated.size(1) <= self.config.block_size:
                 model_input = generated[:, -1:]
             else:
@@ -124,7 +127,6 @@ class TransformerLM(nn.Module):
                 do_sample=do_sample,
             )
             if eos_token_id is not None:
-                # Keep an already-finished row at EOS while unfinished rows continue.
                 next_token = torch.where(
                     finished[:, None],
                     torch.full_like(next_token, eos_token_id),
