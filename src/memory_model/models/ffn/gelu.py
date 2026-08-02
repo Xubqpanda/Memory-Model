@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from ...config import ModelConfig
 
 
-class FeedForward(nn.Module):
+class GELUFeedForward(nn.Module):
     """Position-wise feed-forward network using GELU.
 
     References:
@@ -23,3 +23,7 @@ class FeedForward(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.dropout(self.down_proj(F.gelu(self.up_proj(x), approximate="tanh")))
+
+
+# Backward-compatible name for the original baseline component.
+FeedForward = GELUFeedForward

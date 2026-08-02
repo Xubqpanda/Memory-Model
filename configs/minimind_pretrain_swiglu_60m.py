@@ -1,24 +1,23 @@
-# RoPE ablation counterpart of minimind_pretrain_60m.py.
-# It changes only the position method so results can be compared fairly with
-# the learned-absolute-position baseline.
+# Equal-parameter SwiGLU ablation of minimind_pretrain_60m.py.
+# GELU uses two 768x3072 FFN matrices; SwiGLU uses three 768x2048 matrices,
+# keeping the FFN parameter count equal while changing only the FFN method.
 model = dict(
     vocab_size=6400,
     block_size=768,
     n_layer=8,
     n_head=8,
     d_model=768,
-    d_ff=3072,
+    d_ff=2048,
     dropout=0.1,
     attention_type="mha",
-    ffn_type="gelu",
-    position_embedding_type="rope",
-    rope_theta=10_000.0,
+    ffn_type="swiglu",
+    position_embedding_type="learned_absolute",
 )
 
 train = dict(
     data_dir="data/minimind/pretrain_mini",
     tokenizer="minimind",
-    out_dir="checkpoints/minimind_pretrain_rope_60m",
+    out_dir="checkpoints/minimind_pretrain_swiglu_60m",
     batch_size=128,
     gradient_accumulation_steps=2,
     target_tokens_per_step=196608,
@@ -38,8 +37,8 @@ train = dict(
     wandb_mode="online",
     wandb_entity="Zjunlp-Xubqpanda",
     wandb_project="Memory-Model",
-    wandb_run_name="minimind-pretrain-mini-60m-rope",
-    wandb_tags=["ablation", "minimind", "pretrain", "60m", "mha", "rope"],
+    wandb_run_name="minimind-pretrain-mini-60m-swiglu",
+    wandb_tags=["ablation", "minimind", "pretrain", "60m", "mha", "swiglu"],
     wandb_init_timeout=30,
     wandb_fallback_offline=True,
 )

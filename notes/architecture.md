@@ -12,7 +12,9 @@ models/
 ├── attention/mha.py                         MHA 与 KV Cache
 ├── embedding/token_embedding/learned.py    Token Embedding
 ├── embedding/position_embedding/           Learned absolute 与 RoPE
-├── ffn/gelu.py                              Position-wise GELU FFN
+├── ffn/                                     Position-wise FFN
+│   ├── gelu.py                              GELU FFN
+│   └── swiglu.py                           SwiGLU FFN
 ├── norm/layer_norm.py                       LayerNorm
 ├── residual/standard.py                     标准残差连接
 ├── block/transformer_block.py               Transformer Block
@@ -92,6 +94,7 @@ class ModelConfig:
     bias: bool = False
     tie_embeddings: bool = True
     attention_type: str = "mha"
+    ffn_type: str = "gelu"
     position_embedding_type: str = "learned_absolute"
     rope_theta: float = 10_000.0
 ```
@@ -105,11 +108,12 @@ class ModelConfig:
 | `n_layer` | Transformer Block 的数量 |
 | `n_head` | 每一层 Attention 的头数 |
 | `d_model` | 每个 token 在模型中的表征维度 |
-| `d_ff` | FFN 中间层维度，默认是 $4d_{model}$ |
+| `d_ff` | FFN 中间层维度；GELU 默认 $4d_{model}$，SwiGLU 默认约 $8d_{model}/3$ |
 | `dropout` | 训练时随机丢弃部分激活值的概率 |
 | `bias` | Linear 和 LayerNorm 是否使用偏置参数 |
 | `tie_embeddings` | 输入 Embedding 与输出 LM Head 是否共享权重 |
 | `attention_type` | Attention 方法；当前支持 `mha` |
+| `ffn_type` | FFN 方法：`gelu` 或 `swiglu` |
 | `position_embedding_type` | 位置方法：`learned_absolute` 或 `rope` |
 | `rope_theta` | RoPE 的频率基数 |
 
@@ -439,7 +443,7 @@ LM Head 则出现在所有 Transformer Block 之后：
 
 ## 6. `FeedForward`
 
-FFN 的实现是：
+默认 GELU FFN 的实现是：
 
 ```python
 self.up_proj = nn.Linear(d_model, d_ff)
@@ -486,6 +490,14 @@ Attention 和 FFN 的职责不同：
 | FFN | 对每个 token 当前拥有的表征进行非线性加工 |
 
 FFN 对所有位置使用同一套权重，但每个位置独立计算。它不会直接让第 3 个 token 读取第 1 个 token；跨 token 的信息交换发生在 Attention 中。
+
+项目也支持 SwiGLU：
+
+$$
+\operatorname{SwiGLU}(x)=W_{down}\left[\operatorname{SiLU}(W_{gate}x)\odot W_{up}x\right]
+$$
+
+为了与 $d_{ff}=4d$ 的双矩阵 GELU FFN 近似等参数比较，三矩阵 SwiGLU 通常取 $d_{ff}\approx8d/3$。当前 768 维模型对应 GELU `d_ff=3072`、SwiGLU `d_ff=2048`。
 
 ## 7. `TransformerBlock`
 
@@ -873,7 +885,7 @@ Decoder-only Transformer
 | --- | --- |
 | Learned absolute position / RoPE | ALiBi、NoPE、长上下文 RoPE 扩展 |
 | LayerNorm | RMSNorm |
-| GELU FFN | SwiGLU |
+| GELU FFN / SwiGLU | MoE、LatentMoE、其他 gated FFN |
 | Multi-Head Attention | GQA / MQA |
 | 标准 Attention 接口 | 显式研究 FlashAttention 与高效实现 |
 | 无长期状态 | 参数化 memory 或外部 memory |

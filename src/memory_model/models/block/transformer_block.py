@@ -5,7 +5,7 @@ import torch.nn as nn
 
 from ...config import ModelConfig
 from ..attention import build_attention
-from ..ffn import FeedForward
+from ..ffn import build_ffn
 from ..norm import TransformerLayerNorm
 from ..residual import ResidualConnection
 from ..types import KVCache
@@ -27,7 +27,7 @@ class TransformerBlock(nn.Module):
         self.attn = build_attention(config)
         self.attn_residual = ResidualConnection()
         self.ffn_norm = TransformerLayerNorm(config)
-        self.ffn = FeedForward(config)
+        self.ffn = build_ffn(config)
         self.ffn_residual = ResidualConnection()
 
     def forward(

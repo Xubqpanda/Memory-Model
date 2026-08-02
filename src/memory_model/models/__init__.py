@@ -8,7 +8,7 @@ from .embedding import (
     RotaryPositionEmbedding,
     TokenEmbedding,
 )
-from .ffn import FeedForward
+from .ffn import FeedForward, GELUFeedForward, SwiGLUFeedForward
 from .lm_head import LanguageModelHead
 from .norm import TransformerLayerNorm
 from .residual import ResidualConnection
@@ -18,6 +18,7 @@ from .types import KVCache, ModelOutput
 __all__ = [
     "CausalSelfAttention",
     "FeedForward",
+    "GELUFeedForward",
     "KVCache",
     "LanguageModelHead",
     "LearnedAbsolutePositionEmbedding",
@@ -26,6 +27,7 @@ __all__ = [
     "PositionEmbedding",
     "ResidualConnection",
     "RotaryPositionEmbedding",
+    "SwiGLUFeedForward",
     "TokenEmbedding",
     "TransformerBlock",
     "TransformerLM",

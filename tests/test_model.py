@@ -29,6 +29,7 @@ def test_config_matches_checkpoint_created_before_position_options_existed():
     current = ModelConfig(vocab_size=32, block_size=16, n_layer=2, n_head=2, d_model=16)
     legacy = current.to_dict()
     legacy.pop("attention_type")
+    legacy.pop("ffn_type")
     legacy.pop("position_embedding_type")
     legacy.pop("rope_theta")
 

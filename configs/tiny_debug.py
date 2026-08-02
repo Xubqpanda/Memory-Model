@@ -7,6 +7,7 @@ model = dict(
     d_ff=512,
     dropout=0.0,
     attention_type="mha",
+    ffn_type="gelu",
     position_embedding_type="learned_absolute",
 )
 

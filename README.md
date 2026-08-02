@@ -8,7 +8,7 @@
 
 - learned token embedding，以及可切换的 learned absolute position / RoPE
 - causal multi-head self-attention
-- Pre-Norm、残差连接、GELU FFN
+- Pre-Norm、残差连接，以及可切换的 GELU / SwiGLU FFN
 - next-token cross-entropy loss
 - embedding / LM head 权重共享
 - greedy、temperature、top-k、top-p 解码与 EOS 自动停止

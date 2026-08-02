@@ -15,7 +15,8 @@ models/
 │       ├── learned_absolute.py        可学习绝对位置向量
 │       └── rope.py                    Rotary Position Embedding
 ├── ffn/
-│   └── gelu.py                        GELU FFN
+│   ├── gelu.py                        GELU FFN
+│   └── swiglu.py                      SwiGLU FFN
 ├── lm_head/
 │   └── language_model_head.py         next-token 输出头
 ├── norm/
@@ -36,7 +37,8 @@ Python 包和文件名统一使用小写；类名使用大驼峰。每个具体�
 | Absolute position | Learned absolute lookup table | Radford et al., [Language Models are Unsupervised Multitask Learners](https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf), 2019 |
 | Rotary position | RoPE | Su et al., [RoFormer](https://arxiv.org/abs/2104.09864), 2021 |
 | Attention | Multi-Head Attention | Vaswani et al., [Attention Is All You Need](https://arxiv.org/abs/1706.03762), 2017 |
-| FFN activation | GELU | Hendrycks and Gimpel, [Gaussian Error Linear Units](https://arxiv.org/abs/1606.08415), 2016 |
+| FFN | GELU | Hendrycks and Gimpel, [Gaussian Error Linear Units](https://arxiv.org/abs/1606.08415), 2016 |
+| FFN | SwiGLU | Shazeer, [GLU Variants Improve Transformer](https://arxiv.org/abs/2002.05202), 2020 |
 | Normalization | LayerNorm | Ba et al., [Layer Normalization](https://arxiv.org/abs/1607.06450), 2016 |
 | Residual | Additive residual | He et al., [Deep Residual Learning](https://arxiv.org/abs/1512.03385), 2015 |
 | Block layout | Pre-LN Transformer | Xiong et al., [On Layer Normalization in the Transformer Architecture](https://arxiv.org/abs/2002.04745), 2020 |
@@ -49,6 +51,7 @@ Python 包和文件名统一使用小写；类名使用大驼峰。每个具体�
 ```python
 model = dict(
     attention_type="mha",
+    ffn_type="gelu",
     position_embedding_type="learned_absolute",
 )
 ```
@@ -66,3 +69,19 @@ model = dict(
 Learned absolute position 在进入第一个 Block 前与 token embedding 相加。RoPE 不生成可训练的位置矩阵，而是在每一层 Attention 内旋转 Q 和 K。两者不是同一位置上的可互换权重，因此把旧 checkpoint 改成 RoPE 后需要重新训练。
 
 `configs/minimind_pretrain_rope_60m.py` 是和原 60M MiniMind 预训练配置只相差位置编码方法的消融配置。
+
+## FFN 配置
+
+默认 GELU 基线使用两个投影和 $d_{ff}=4d$：
+
+```python
+model = dict(ffn_type="gelu", d_ff=3072)
+```
+
+等参数量 SwiGLU 使用三个投影，并将中间维度缩为约 $8d/3$：
+
+```python
+model = dict(ffn_type="swiglu", d_ff=2048)
+```
+
+`configs/minimind_pretrain_swiglu_60m.py` 与原 60M 配置保持相同数据、训练预算、MHA 和 learned absolute position，只替换 FFN 方法，并保持 FFN 参数量相同。
