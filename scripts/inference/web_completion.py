@@ -99,8 +99,8 @@ def build_demo(harness: CompletionHarness) -> gr.Blocks:
     if harness.validation_loss is not None:
         description += f" · val loss {harness.validation_loss:.4f}"
 
-    with gr.Blocks(title="Memory-Model Completion") as demo:
-        gr.Markdown("# Memory-Model 预训练续写测试")
+    with gr.Blocks(title="LLM-Foundry Completion") as demo:
+        gr.Markdown("# LLM-Foundry 预训练续写测试")
         gr.Markdown(
             description
             + "\n\n页面不会注入 user、assistant 或 system role。模型只看到下方累计的原始文本，"

@@ -1,4 +1,4 @@
-# Memory-Model
+# LLM-Foundry
 
 这是一个从零理解并实验语言模型架构的研究项目。当前阶段先建立一个可验证的 Decoder-only Transformer 基线；后续将在这个基线上逐步实现和检验我们对参数化 memory、时间信息与有状态模型的想法。
 
@@ -41,7 +41,7 @@ checkpoints/                                  模型检查点，不提交到 Git
 当前环境已经具备依赖。若在其他环境运行：
 
 ```bash
-cd /mnt/20t/xubuqiang/Study/Memory-Model
+cd /mnt/20t/xubuqiang/Study/LLM-Foundry
 python -m pip install -e '.[data,dev]'
 ```
 
@@ -82,7 +82,7 @@ python scripts/train/pretrain.py \
   --wandb-run-name tiny-debug-baseline-200steps
 ```
 
-默认会记录到 `Zjunlp-Xubqpanda/Memory-Model`。临时关闭或改为离线记录：
+默认继续记录到历史 W&B 项目 `Zjunlp-Xubqpanda/Memory-Model`，以保留已有训练曲线。临时关闭或改为离线记录：
 
 ```bash
 python scripts/train/pretrain.py \
@@ -116,7 +116,7 @@ python scripts/inference/generate.py \
 TinyStories 完整训练集约有 212 万篇故事、约 4.45 亿 GPT-2 token，压缩下载量约 1GB。当前网络环境可以通过 Hugging Face 镜像准备数据：
 
 ```bash
-cd /mnt/20t/xubuqiang/Study/Memory-Model
+cd /mnt/20t/xubuqiang/Study/LLM-Foundry
 
 /mnt/8t/xubuqiang/anaconda3/bin/python \
   scripts/data/prepare_tinystories.py \

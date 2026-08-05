@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "memory-model"
+name = "llm-foundry"
 version = "0.1.0"
-description = "A research codebase for vanilla and memory-augmented language models"
+description = "A modular research codebase for LLM architectures, memory, editing, and training"
 requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.24",

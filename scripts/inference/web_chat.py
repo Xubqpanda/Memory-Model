@@ -129,8 +129,8 @@ def build_demo(harness: ChatHarness) -> gr.Blocks:
     if harness.validation_ppl is not None:
         description += f" · conditional PPL {harness.validation_ppl:.2f}"
 
-    with gr.Blocks(title="Memory-Model Chat") as demo:
-        gr.Markdown("# Memory-Model SFT 对话测试")
+    with gr.Blocks(title="LLM-Foundry Chat") as demo:
+        gr.Markdown("# LLM-Foundry SFT 对话测试")
         gr.Markdown(
             description
             + "\n\n页面使用与 SFT 完全一致的 ChatML role 边界。PPL 只统计验证集 assistant token，"

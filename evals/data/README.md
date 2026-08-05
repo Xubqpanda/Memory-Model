@@ -1,7 +1,7 @@
 # Fixed evaluation data
 
 `fixed_chat_eval.jsonl` is a manually curated, permanently held-out behavioral
-suite for comparing Memory-Model checkpoints. It must never be included in
+suite for comparing LLM-Foundry checkpoints. It must never be included in
 pretraining, SFT, DPO, RL, rejection-sampling, or prompt-generation data.
 
 Each row contains:
