@@ -30,8 +30,10 @@ src/memory_model/models/                    可组合的 Transformer 模型组�
 scripts/data/                                 数据下载与预处理入口
 scripts/train/                                训练入口
 scripts/inference/                            推理与生成入口
+scripts/eval/                                 固定评测与 checkpoint 对比
 tests/                                        因果掩码、反向传播、KV Cache 等测试
-notes/                                        原理笔记
+notes/                                        原理、论文与仓库架构笔记
+evals/                                        固定评测数据与结果
 data/                                         tokenized 数据，不提交到 Git
 checkpoints/                                  模型检查点，不提交到 Git
 ```
@@ -110,6 +112,17 @@ python scripts/inference/generate.py \
   --prompt 'Once upon a time' \
   --max-new-tokens 100
 ```
+
+## 2.1 Metis-lite memory smoke test
+
+第一版动态 memory 独立于 Transformer Backbone，可以先验证一次写入和下一轮读取：
+
+```bash
+PYTHONPATH=src python scripts/memory/smoke_metis_lite.py
+```
+
+该实验会打印 Alpha Top-P 选择的 token 数量、更新门、memory state 形状以及读取结果，
+不会修改现有 checkpoint 或默认模型路径。
 
 ## 3. TinyStories
 
